@@ -4,17 +4,24 @@ import os
 
 # Defines Number of Episodes
 numOfEps= int(input("How many episodes?: "))
+# Takes link input
+print("Example : https://www1.gogoanime.bid/k-on-2-episode")
+link = input("Enter the link: ")
+# Takes email input
+email = input("Enter your email: ")
+# Takes password input
+password = input("Enter your password: ")
 eps = list(range(1,numOfEps+1))
 
 # This function logs in and fetches each download link indiviually
-def LoginAndGoToLink(eps):
+def LoginAndGoToLink(eps,Email,Password,LinkofPath):
     # Array of links to be downloaded
     Links = []
 
     # Loops for all episodes
     for ep in eps:
-        # Episode link can be changed
-        link = f"https://www1.gogoanime.bid/tokyo-revengers-seiya-kessen-hen-episode-{ep}"
+        # Episode link
+        link = f"{format(LinkofPath)}-{ep}"
         # Login page link
         linkLogin = "https://www1.gogoanime.bid/login.html"
 
@@ -29,8 +36,8 @@ def LoginAndGoToLink(eps):
             if i.get("name") == "csrf-token":
                 csrftoken = i.get("content")
 
-        # Dictionary for storing user data add your email and password 
-        login_data = dict(email='emailsGoesHere', password='passwordGoesHere', _csrf=csrftoken, next='/')
+        # Dictionary for storing user data like your email and password 
+        login_data = dict(email=Email, password=Password, _csrf=csrftoken, next='/')
 
         # Logs in using the data
         s.post(linkLogin,data=login_data, headers=dict(Referer=linkLogin))
@@ -55,6 +62,6 @@ def WGetTheFiles(Links):
         # Downloads each file
         os.system(f"wget -O EP{Links.index(Link) + 1}.mp4 {Link}")
 
-WGetTheFiles(LoginAndGoToLink(eps))
+WGetTheFiles(LoginAndGoToLink(eps,email,password,link))
 
 # ENJOY

@@ -3,7 +3,9 @@ from bs4 import BeautifulSoup as bs
 import os
 
 # Defines Number of Episodes
+startEp = int(input("Start from episode?: "))
 numOfEps= int(input("How many episodes?: "))
+eps = list(range(startEp,startEp+numOfEps))
 # Takes link input
 print("Example : https://www1.gogoanime.bid/k-on-2-episode")
 link = input("Enter the link: ")
@@ -11,7 +13,6 @@ link = input("Enter the link: ")
 email = input("Enter your email: ")
 # Takes password input
 password = input("Enter your password: ")
-eps = list(range(1,numOfEps+1))
 
 # This function logs in and fetches each download link indiviually
 def LoginAndGoToLink(eps,Email,Password,LinkofPath):
@@ -58,10 +59,11 @@ def LoginAndGoToLink(eps,Email,Password,LinkofPath):
 
 # Downloading function, takes Links array as a parameter
 def WGetTheFiles(Links):
+    name = startEp
     for Link in Links:
         # Downloads each file
-        os.system(f"wget -O EP{Links.index(Link) + 1}.mp4 {Link}")
-
+        os.system(f"wget -O EP{name}.mp4 {Link}")
+        name+=1
 WGetTheFiles(LoginAndGoToLink(eps,email,password,link))
 
 # ENJOY

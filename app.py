@@ -7,7 +7,7 @@ startEp = int(input("Start from episode?: "))
 numOfEps= int(input("How many episodes?: "))
 eps = list(range(startEp,startEp+numOfEps))
 # Takes link input
-print("Example : https://www1.gogoanime.bid/k-on-2-episode")
+print("Example : https://gogoanime.hu//k-on-2-episode")
 link = input("Enter the link: ")
 # Takes email input
 email = input("Enter your email: ")
@@ -18,31 +18,31 @@ password = input("Enter your password: ")
 def LoginAndGoToLink(eps,Email,Password,LinkofPath):
     # Array of links to be downloaded
     Links = []
+    # Login page link
+    
+    linkLogin = "https://gogoanime.hu/login.html"
 
+    # Requests session to start handshake
+    s = requests.session()
+    # Gets the html data
+    text = s.get(linkLogin).text
+    # Sorts the data to be usable
+    so = bs(text, "lxml")
+    # Looks for CSRF token
+    for i in so.find_all("meta"):
+        if i.get("name") == "csrf-token":
+            csrftoken = i.get("content")
+
+    # Dictionary for storing user data add your email and password 
+    login_data = dict(email=Email, password=Password, _csrf=csrftoken, next='/')
+
+    # Logs in using the data
+    s.post(linkLogin,data=login_data, headers=dict(Referer=linkLogin))
     # Loops for all episodes
     for ep in eps:
-        # Episode link
+        # Episode link can be changed
         link = f"{format(LinkofPath)}-{ep}"
-        # Login page link
-        linkLogin = "https://www1.gogoanime.bid/login.html"
-
-        # Requests session to start handshake
-        s = requests.session()
-        # Gets the html data
-        text = s.get(linkLogin).text
-        # Sorts the data to be usable
-        so = bs(text, "lxml")
-        # Looks for CSRF token
-        for i in so.find_all("meta"):
-            if i.get("name") == "csrf-token":
-                csrftoken = i.get("content")
-
-        # Dictionary for storing user data like your email and password 
-        login_data = dict(email=Email, password=Password, _csrf=csrftoken, next='/')
-
-        # Logs in using the data
-        s.post(linkLogin,data=login_data, headers=dict(Referer=linkLogin))
-
+        
         # Gets html data of the episode page
         html_page= s.get(link).text
         # Sorts html data

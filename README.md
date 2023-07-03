@@ -4,4 +4,4 @@ Script to batch download anime from gogoanime
 Run `pip install -r req.txt`
 # How to use
 It will ask you for the number of episodes, link, email and password then you can wait while it downloads
-!(Image Of Donwloading)[https://i.imgur.com/lgiDWvA.png]
+!(https://i.imgur.com/lgiDWvA.png)[Image Of Donwloading]

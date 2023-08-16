@@ -127,7 +127,7 @@ def start():
     password = input("Enter your password: ")
 
     name = f"./{name.split('/')[-1]}"
-    DownloadTheFiles(LoginAndGoToLink(eps,email,password,link,quality),name,startEp,link,quality)
+    DownloadTheFiles(LoginAndGoToLink(eps,email,password,link,quality),name,startEp,link,quality,email,password)
     
 # This function logs in and fetches each download link indiviually
 def LoginAndGoToLink(eps,email,password,LinkofPath,quality):
@@ -180,9 +180,11 @@ def generate_hex_color_code():
     return color_code
 
 # Used to download the file and is multiplatform
-def DownloadTheFiles(Links,path,startEp,mainLink,quality):
+def DownloadTheFiles(Links,path,startEp,mainLink,quality,email,password):
     name = startEp
     for link in Links:
+        workingQuality : str = quality
+        tried : list = []
         max_attempts = 3
         for attempt in range(max_attempts+1):
             # Get the file in chunks
@@ -206,18 +208,21 @@ def DownloadTheFiles(Links,path,startEp,mainLink,quality):
                 progress_bar.close()
                 break
             else:
-                # If the second attempt fails we download it in another quality
-                if attempt == 2:
-                    if quality == "360":
-                        otherQuality = "480"
-                    else:
-                        otherQuality = "360"
-                    link = LoginAndGoToLink(list(range(name,name+1)),mainLink,otherQuality)[0]
-                print("Attempt failed, retrying....")
-                time.sleep(3)
+                tried.append(workingQuality)
+                workingQuality = getNewQuality(tried)
+                if workingQuality != None:
+                    link = LoginAndGoToLink(list(range(name,name+1)),email,password,mainLink,workingQuality)[0]
+                    print("Attempt failed, retrying....")
+                    time.sleep(3)
+                else:
+                    print("Unable to get this episode")
         # Increments name
         name+=1
-
+def getNewQuality(tried : list) -> str | None:
+    for quality in ["360","480","720"]:
+        if quality not in tried:
+            return quality
+    return None
 # WGetTheFiles(LoginAndGoToLink(eps,link),name)
 if __name__ == '__main__':
     start()

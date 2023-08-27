@@ -4,8 +4,12 @@ import time
 import requests
 from bs4 import BeautifulSoup as bs
 import os
-import datetime
 from tqdm import tqdm
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # Fucntion that prints search results
 def displaySeachResults(results : dict) -> None:
@@ -16,6 +20,23 @@ def displaySeachResults(results : dict) -> None:
         print(f"The name is {result['Name']}")
         print("\n")
 
+# Function to change domain name
+def changeDomain() -> None:
+    # Old domain
+    domain : str = "gogoanimehd.io"
+    # Prints out old domain
+    print("Current domain : ",domain)
+    # Takes user input for new domain
+    newDomain : str = input("Enter new domain: ")
+    # Reads script from within itself
+    with open("./app.py","r") as f:
+        # Reads the text
+        codeData : str = f.read()
+        # Replaces the domains
+        codeData = codeData.replace(domain,newDomain)
+    with open("./app.py","w") as f:
+        # Writes the new script
+        f.write(codeData)
 # Search function
 def search() -> str:
     # Loops until valid inputt is given
@@ -27,7 +48,7 @@ def search() -> str:
             print("Invlaid input, try again")
 
     # Creates search link 
-    link : str = f"https://gogoanimehd.to/search.html?keyword={search.replace(' ','%20')}"
+    link : str = f"https://gogoanimehd.io/search.html?keyword={search.replace(' ','%20')}"
 
     # Creates a new session
     session : requests.Session = requests.session()
@@ -68,7 +89,7 @@ def search() -> str:
 # Function to get the number of episodes
 def getNumberOfEpisodes(link : str) -> int:
     # Creates link to get data
-    link = f"https://gogoanimehd.to{link}"
+    link = f"https://gogoanimehd.io{link}"
     # Creates new session
     session : requests.Session = requests.session()
     # Gets the page's source
@@ -81,24 +102,48 @@ def getNumberOfEpisodes(link : str) -> int:
     aTag = container.find("a",{"class":"active"})
     # Returns the number of episodes as int
     return int(aTag.get("ep_end"))
+def removeExtraParts(link:str) -> str:
+    for i in range(len(link)-1,0,-1):
+        if link[i].isdigit() or link[i] == "-":
+            link = link[0:i]
+        else:
+            break
+    return link
 
 # Function to make link to be used in getting episodes links
 def makeLink(linkCate : str) -> str:
-    # Gets the last part of the domain
-    name : str = linkCate.split("/")[-1]
-    # Returns the link
-    return f"https://gogoanimehd.to/{name}-episode"
-    
+    # Makes the link
+    link : str =f"https://gogoanimehd.io{linkCate}"
+    chromeOptions = Options()
+    chromeOptions.add_argument("--headless")
+    driver = webdriver.Chrome(options=chromeOptions)
+    driver.get(link)
+    WebDriverWait(driver,10).until(
+        EC.presence_of_element_located((By.ID,"episode_related"))
+    )
+    htmlData = driver.page_source
+    # Parses the html data
+    soupedData = bs(htmlData,"lxml")
+    # Finds the episodes container
+    container = soupedData.find("ul",{"id":"episode_related"})
+    # Gets any episode tag
+    li = container.find("li")
+    # Gets any episode link
+    aTag = li.find("a")
+    driver.quit()
+    # Returns link in proper format
+    return removeExtraParts(f"https://gogoanimehd.io{aTag.get('href')[:-2][1:]}")
 # Starting function
 # Where all the magic happens
 def start():
     # Gets the name from the user search
     name : str = search()
-    # Gets the link
-    link : str = makeLink(name)
     # Gets the number of episodes
     numOfEpisodes : int = getNumberOfEpisodes(name)
     print(f"There are {numOfEpisodes} episodes")
+    print("Wait for a second..")
+    # Gets the link
+    link : str = makeLink(name)
     # Defines Number of Episodes
     try:
         startEp = int(input("Start from episode?: "))
@@ -112,7 +157,7 @@ def start():
     eps = list(range(startEp,startEp+numOfEps))
     # Prompts the user to enter quality
     try:
-        quality = input("Enter quality 360,480,720: ")
+        quality = input("Enter quality 360,480,720,1080: ")
     except:
         # In case of exception we default it at 480
         print("Defaulted at quality 480")
@@ -122,20 +167,20 @@ def start():
         os.mkdir(f"./{name.split('/')[-1]}")
     except:
         print("Directory exists")
+    # Takes email input
     email = input("Enter your email: ")
     # Takes password input
     password = input("Enter your password: ")
-
     name = f"./{name.split('/')[-1]}"
-    DownloadTheFiles(LoginAndGoToLink(eps,email,password,link,quality),name,startEp,link,quality,email,password)
-    
+    DownloadTheFiles(LoginAndGoToLink(eps,link,quality,email,password),name,startEp,link,quality,email,password)
+    input("Enter anything to quit: ")
 # This function logs in and fetches each download link indiviually
-def LoginAndGoToLink(eps,email,password,LinkofPath,quality):
+def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
     # Array of links to be downloaded
     Links = []
     # Login page link
     
-    linkLogin = "https://gogoanimehd.to/login.html"
+    linkLogin = "https://gogoanimehd.io/login.html"
 
     # Requests session to start handshake
     s = requests.session()
@@ -162,13 +207,16 @@ def LoginAndGoToLink(eps,email,password,LinkofPath,quality):
         html_page= s.get(link).text
         # Sorts html data
         soup = bs(html_page, "lxml")
-
+        sizeBefore : int = len(Links)
         # Finds download links
         for link in soup.find_all("a"):
             # You can set the resloution from '360, 480, 720, 1080'
             if quality in format(link.text):
                 x = link.get("href")
                 Links.append(x) 
+        if sizeBefore == len(Links):
+            print(f"Couldn't get episode {ep} at quality {quality}")
+            Links.append("")
     # Returns Links array to other functions
     return Links
 
@@ -211,19 +259,29 @@ def DownloadTheFiles(Links,path,startEp,mainLink,quality,email,password):
                 tried.append(workingQuality)
                 workingQuality = getNewQuality(tried)
                 if workingQuality != None:
-                    link = LoginAndGoToLink(list(range(name,name+1)),email,password,mainLink,workingQuality)[0]
+                    link = LoginAndGoToLink(list(range(name,name+1)),mainLink,workingQuality,email,password)[0]
                     print("Attempt failed, retrying....")
                     time.sleep(3)
                 else:
                     print("Unable to get this episode")
         # Increments name
         name+=1
-def getNewQuality(tried : list) -> str | None:
-    for quality in ["360","480","720"]:
+def getNewQuality(tried : list) -> str:
+    for quality in ["360","480","720","1080"]:
         if quality not in tried:
             return quality
     return None
 # WGetTheFiles(LoginAndGoToLink(eps,link),name)
 if __name__ == '__main__':
-    start()
+    while True:
+        try:
+            choice : int = int(input("Change domain (1) or download anime (2): ")) 
+        except:
+            start()
+            break
+        if choice == 1 :
+            changeDomain()
+        elif choice == 2:
+            start()
+            break
 # ENJOY

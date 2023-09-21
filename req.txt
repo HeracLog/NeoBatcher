@@ -2,4 +2,4 @@ requests
 bs4
 lxml
 selenium
-tqdm
+flet

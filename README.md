@@ -21,6 +21,7 @@ Or you can change the settings here are things you can do: <br>
 - Change the color theme by adding the hex code, or you can enter the word "random" then each time you open the app a different theme will be generated.
 - Change default download directory.
 - Change your email or password credentials<br>
+
 ![change settings](https://i.imgur.com/rgEFR6T.png)<br>
 And finally the main part, the downloading itself. <br>
 First you search for the anime you want<br>

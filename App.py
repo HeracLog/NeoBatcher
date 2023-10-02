@@ -57,6 +57,8 @@ def search(search : str) -> str | dict:
     i : int = 0
     # Loops through all results
     for show in container.find_all("li"):
+        # Gets image
+        img : str = show.find("img").get("src") 
         # Gets the p tag containing the name and link
         paragraph = show.find("p", {"class":"name"})
         # Gets the a tag within it
@@ -65,7 +67,7 @@ def search(search : str) -> str | dict:
         showName : str = aTag.getText()
         showLink : str = aTag.get("href")
         # Updates the dicitionary and increments i
-        shows.update({showName:showLink})
+        shows.update({showName:[showLink,img]})
         i+=1
     return shows        
 
@@ -96,11 +98,13 @@ def getHomePage() -> dict:
     # Gets all animes
     animes : list[Tag] = actualItems.find_all("li")
     # Creates an empty dict for the anime to be collected
-    # The format is {AnimeName : [AnimeLink : LatestEpisode]}
+    # The format is {AnimeName : [AnimeLink , LatestEpisode, ImageLink]}
     animeDict : dict[str,list[str]] = {}
     
     # Loops through the animes found 
     for anime in animes:
+        # Gets the image link
+        img : str = anime.find("img").get("src")
         # Finds the <p> tag with the name class
         nameCont : Tag = anime.find("p",{"class":"name"})
         # Finds the <a> tag with the link and name
@@ -112,7 +116,7 @@ def getHomePage() -> dict:
         # Gets the latest episode number
         episode = anime.find("p",{"class":"episode"}).getText()
         # Places the results in the anime dict
-        animeDict.update({animeName:[animeLink,episode]})
+        animeDict.update({animeName:[animeLink,episode,img]})
 
     return animeDict
 
@@ -568,10 +572,10 @@ def main(page : ft.Page):
         print(e.control.text, "selected")
         # Edits the variable episodesNumber as the number of episodes availabe for this anime
         global episodesNumber
-        episodesNumber = getNumberOfEpisodes(results[e.control.text])
+        episodesNumber = getNumberOfEpisodes(results[e.control.text][0])
         # Edits the linkRaw variable to the link before formatting
         global linkRaw
-        linkRaw = results[e.control.text]
+        linkRaw = results[e.control.text][0]
         # Edits the name variable to the anime name
         global name
         name = e.control.text
@@ -619,7 +623,7 @@ def main(page : ft.Page):
         page.add(ft.Text("Making link....."))
         # Edits the link variable to the link "makeLink" function return value
         global link
-        link = makeLink(results[e.control.text])
+        link = makeLink(results[e.control.text][0])
         # We enable the download button
         downloadButton.disabled = False
         # Updates the items
@@ -701,7 +705,7 @@ def main(page : ft.Page):
         page.update()
 
     # Function to places the results
-    def placeResults(results):
+    def placeResults(resultKeys):
         # Sets variables as global
         global resultsPage
 
@@ -715,7 +719,7 @@ def main(page : ft.Page):
         i : int = 1
 
         # Loops through the results on page
-        for result in results:
+        for result in resultKeys:
             # If i is 1 then we add a new row
             if i == 1:
                 # Creates a new row list
@@ -726,20 +730,30 @@ def main(page : ft.Page):
                 )
             # Appends a button to the result row list
             resultsRow.append(
-                ft.ElevatedButton(
-                    # The text is the name of the anime
-                    text=f"{result}",
-                    # The size gotten through testing
-                    width=119,
-                    height=119,
-                    # When clicked it runs the "selectResult" function 
-                    on_click= selectResult
-                )  
+                ft.Container(
+                    content = ft.Column(
+                        controls = [
+                            
+                            ft.Image(
+                                src = results[result][1],
+                                width= 140,
+                                height = 198,
+                                fit=ft.ImageFit.FILL,
+                                repeat=ft.ImageRepeat.NO_REPEAT,
+                                border_radius=ft.border_radius.all(10)
+                            ),
+                            ft.TextButton(
+                                text= f"{result}",
+                                on_click= selectResult
+                            )
+                    ]),
+                    width =  200
+                ) 
             )
             # Increments the i
             i += 1
             # If i is 4
-            if i == 4:
+            if i == 3:
                 # We append the row to the list
                 resultsList.append(thisrow)
                 # Returns the i to 1
@@ -753,7 +767,7 @@ def main(page : ft.Page):
         # Adds the results page
         page.add(resultsPage)
 
-    def placeResultsHome(results):
+    def placeResultsHome(resultKeys):
         # Sets variables as global
         global resultsPage
 
@@ -767,7 +781,7 @@ def main(page : ft.Page):
         i : int = 1
 
         # Loops through the results on page
-        for result in results:
+        for result in resultKeys:
             # If i is 1 then we add a new row
             if i == 1:
                 # Creates a new row list
@@ -778,20 +792,29 @@ def main(page : ft.Page):
                 )
             # Appends a button to the result row list
             resultsRow.append(
-                ft.ElevatedButton(
-                    # The text is the name of the anime
-                    text=f"{result}",
-                    # The size gotten through testing
-                    width=119,
-                    height=119,
-                    # When clicked it runs the "selectResult" function 
-                    on_click= selectHomePageResult
-                )  
+                ft.Container(
+                    content = ft.Column(
+                        controls = [
+                            ft.Image(
+                                src = results[result][2],
+                                width= 140,
+                                height = 198,
+                                fit=ft.ImageFit.FILL,
+                                repeat=ft.ImageRepeat.NO_REPEAT,
+                                border_radius=ft.border_radius.all(10)
+                            ),
+                            ft.TextButton(
+                                text= f"{result}",
+                                on_click= selectHomePageResult
+                            )
+                    ]),
+                    width =  200
+                ) 
             )
             # Increments the i
             i += 1
             # If i is 4
-            if i == 4:
+            if i == 3:
                 # We append the row to the list
                 resultsList.append(thisrow)
                 # Returns the i to 1
@@ -1021,7 +1044,7 @@ def main(page : ft.Page):
             ft.Container(
                 # Text of size 12
                 content = ft.Text(
-                    value="V3.1",
+                    value="V3.1.1",
                     size = 12
                 ),
                 # Container padding of size 30

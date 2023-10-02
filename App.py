@@ -715,6 +715,18 @@ def main(page : ft.Page):
         resultsPage = ft.Column(
             controls= resultsList
         )
+        searchquery = searchField.value
+        searchquery = searchquery.capitalize()
+        resultsPage.controls.append(
+            ft.Container(
+                content= ft.Text(
+                    value=f"Search : {searchquery}",
+                    weight= ft.FontWeight.BOLD,
+                    size = 23,
+                ),
+                alignment= ft.alignment.top_center
+            )
+        )
         # The index variable we use to know the placement of the button
         i : int = 1
 
@@ -762,6 +774,11 @@ def main(page : ft.Page):
         if i != 1:
             # Adds the result list
             resultsList.append(thisrow)
+        resultsPage.controls.append(
+            ft.Container(
+                content = ft.ElevatedButton(text ="Back", on_click=loadMainPage),
+            )
+        )
         # Cleans the page
         page.clean()
         # Adds the results page
@@ -776,6 +793,16 @@ def main(page : ft.Page):
         # Results page column
         resultsPage = ft.Column(
             controls= resultsList
+        )
+        resultsPage.controls.append(
+            ft.Container(
+                content= ft.Text(
+                    value="Home Page",
+                    weight= ft.FontWeight.BOLD,
+                    size = 23,
+                ),
+                alignment= ft.alignment.top_center
+            )
         )
         # The index variable we use to know the placement of the button
         i : int = 1
@@ -823,6 +850,11 @@ def main(page : ft.Page):
         if i != 1:
             # Adds the result list
             resultsList.append(thisrow)
+        resultsPage.controls.append(
+            ft.Container(
+                content = ft.ElevatedButton(text ="Back", on_click=loadMainPage),
+            )
+        )
         # Cleans the page
         page.clean()
         # Adds the results page

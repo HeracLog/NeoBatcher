@@ -1,4 +1,4 @@
-# GogoBatcherDio
+# NeoBatcher
 Script to batch download anime from gogoanime
 # Required libraries
 Run `pip install -r req.txt` <br>

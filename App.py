@@ -5,12 +5,7 @@ import requests
 from bs4 import BeautifulSoup as bs, Tag
 import os
 import flet as ft
-import json
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import json 
 
 # Function that loads the data from the preferences file
 def loadData() -> dict:
@@ -27,7 +22,7 @@ name : str = ""
 results : dict = {}
 episodesNumber : int = 0
 resultsList : list = []
-# Results page intialization
+# Results page intialization 
 resultsPage = ft.Column(
     controls= resultsList
 )
@@ -58,7 +53,7 @@ def search(search : str) -> str | dict:
     # Loops through all results
     for show in container.find_all("li"):
         # Gets image
-        img : str = show.find("img").get("src")
+        img : str = show.find("img").get("src") 
         # Gets the p tag containing the name and link
         paragraph = show.find("p", {"class":"name"})
         # Gets the a tag within it
@@ -69,7 +64,7 @@ def search(search : str) -> str | dict:
         # Updates the dicitionary and increments i
         shows.update({showName:[showLink,img]})
         i+=1
-    return shows
+    return shows        
 
 # Function to format links from homepage
 def formatHomePageLink(link : str) -> str:
@@ -100,8 +95,8 @@ def getHomePage() -> dict:
     # Creates an empty dict for the anime to be collected
     # The format is {AnimeName : [AnimeLink , LatestEpisode, ImageLink]}
     animeDict : dict[str,list[str]] = {}
-
-    # Loops through the animes found
+    
+    # Loops through the animes found 
     for anime in animes:
         # Gets the image link
         img : str = anime.find("img").get("src")
@@ -154,32 +149,45 @@ def removeExtraParts(link:str) -> str:
 def makeLink(linkCate : str) -> str:
     # Makes the link
     link : str =f"https://{domain}{linkCate}"
-    chromeOptions = Options()
-    chromeOptions.add_argument("--headless")
-    driver = webdriver.Firefox(options=chromeOptions)
-    driver.get(link)
-    WebDriverWait(driver,10).until(
-        EC.presence_of_element_located((By.ID,"episode_related"))
-    )
-    htmlData = driver.page_source
+    # Creates new session
+    session = requests.session()
+    text = session.get(link).text
+
     # Parses the html data
-    soupedData = bs(htmlData,"lxml")
-    # Finds the episodes container
-    container = soupedData.find("ul",{"id":"episode_related"})
-    # Gets any episode tag
-    li = container.find("li")
-    # Gets any episode link
-    aTag = li.find("a")
-    driver.quit()
-    # Returns link in proper format
-    return removeExtraParts(f"https://{domain}{aTag.get('href')[:-2][1:]}")
+    parsedData = bs(text,"lxml")
+
+    # Gets movie ID
+    movieID = parsedData.find("input",{"class":"movie_id"}).get("value")
+    # Gets the container with the episodes ranges
+    episodeRanges = parsedData.find("ul",{"id":"episode_page"})
+
+    # Gets the start and end episode number
+    epStart = episodeRanges.find("li").find("a").get("ep_start")
+    epEnd = episodeRanges.find("li").find("a").get("ep_end")
+    # Creates a link for getting the episode data
+    epLink = f"https://ajax.gogo-load.com/ajax/load-list-episode?ep_start={epStart}&ep_end={epEnd}&id={movieID}&default_ep=0&alias={link.split('/')[-1]}"
+
+    # Gets the episode page
+    epData = session.get(epLink).text
+
+    # Parses the episode page
+    link = bs(epData,"lxml").find("a").get("href")
+    # Formats the link
+    if link[0] == " ":
+        link = link[1:-1]
+    link = f"https://{domain}{link}"
+    linkParts = link.split("-")
+    linkParts = linkParts[:-1]
+    link = "-".join(linkParts)
+    # Returns the link
+    return link
 
 # This function logs in and fetches each download link indiviually
 def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
     # Array of links to be downloaded
     Links = []
     # Login page link
-
+    
     linkLogin = f"https://{domain}/login.html"
 
     # Requests session to start handshake
@@ -193,7 +201,7 @@ def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
         if i.get("name") == "csrf-token":
             csrftoken = i.get("content")
 
-    # Dictionary for storing user data add your email and password
+    # Dictionary for storing user data add your email and password 
     login_data = dict(email=email, password=password, _csrf=csrftoken, next='/')
 
     # Logs in using the data
@@ -202,7 +210,7 @@ def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
     for ep in eps:
         # Episode link can be changed
         link = f"{format(LinkofPath)}-{ep}"
-
+        
         # Gets html data of the episode page
         html_page= s.get(link).text
         # Sorts html data
@@ -213,7 +221,7 @@ def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
             # You can set the resloution from '360, 480, 720, 1080'
             if quality in format(link.text):
                 x = link.get("href")
-                Links.append(x)
+                Links.append(x) 
         if sizeBefore == len(Links):
             print(f"Couldn't get episode {ep} at quality {quality}")
             Links.append("")
@@ -240,7 +248,7 @@ def getNewQuality(tried : list) -> str:
 # Main function where all the magic happens
 # This is mostly flet stuff and GUI
 def main(page : ft.Page):
-    # Inializes email and password fields
+    # Inializes email and password fields 
     emailField = ft.TextField(
         label="Email"
     )
@@ -262,7 +270,7 @@ def main(page : ft.Page):
             page.clean()
             # Adds the main page
             page.add(mainPage)
-
+    
     # Login screen column
     loginScreen = ft.Column(
         # Controls of the column
@@ -295,7 +303,7 @@ def main(page : ft.Page):
     else:
         # Otherwise we use the one provided
         colorCode = data["Color"]
-    # Sets the app theme as the one prefered
+    # Sets the app theme as the one prefered  
     page.theme_mode = defaultMode
     # Sets up the thene with the color code from above
     page.theme = ft.Theme(
@@ -316,7 +324,7 @@ def main(page : ft.Page):
     # Setting up allignment
     page.vertical_alignment=ft.MainAxisAlignment.CENTER,
     page.horizontal_alignment=ft.CrossAxisAlignment.CENTER
-
+    
     # Intializes fields to be used in download menu
     # Search field contains the anime to be searched for
     searchField = ft.TextField(
@@ -350,7 +358,7 @@ def main(page : ft.Page):
         # Saves the changes to the json file
         with open("./preferences.json","w") as f:
             json.dump(data,f,indent=4)
-
+    
     # Function to load the search page
     def loadSearchPage(e):
         # Removes everything from the page
@@ -375,7 +383,7 @@ def main(page : ft.Page):
             results = search(searchField.value)
             # Places all the buttons containing the anime names
             placeResults(results.keys())
-
+            
     # Back button function
     def back(e):
         # Removes everything from the page
@@ -446,7 +454,7 @@ def main(page : ft.Page):
                     # Adds the download text and the progress bar to the column
                     pageColumn.controls.append(
                         ft.Column([textF, progress_bar]))
-
+                    
                     # Opens file in binary write mode
                     with open(f"{path}/EP{name}.mp4", "wb") as file:
                         # Loops through response as it write it in chunks
@@ -497,7 +505,7 @@ def main(page : ft.Page):
             # Increments name
             name+=1
 
-
+        
     # Search page column
     searchPage = ft.Column(
         controls=[
@@ -536,11 +544,11 @@ def main(page : ft.Page):
                 # The row is restricted by width 400
                 width = 600,
             ),
-
+            
         ]
     )
 
-    # Download Button function
+    # Download Button function 
     def download(e):
         # Prints the download settings
         print("From",epFromField.value)
@@ -552,7 +560,7 @@ def main(page : ft.Page):
         eps = list(range(int(epFromField.value),1+int(epNumField.value)))
         # Fetches the links using the "LoginAndGoToLink" function
         videosLinks = LoginAndGoToLink(eps,link,quaityDropDown.value,data["Email"],data["Password"])
-        # Cleans the page
+        # Cleans the page 
         page.clean()
         # Adds a bold text with the anime name
         page.add(
@@ -567,7 +575,7 @@ def main(page : ft.Page):
             ...
         # Downloads the episodes
         DownloadTheFilesFlet(videosLinks,path,int(epFromField.value),link,quaityDropDown.value,data["Email"],data["Password"])
-
+    
     # Function that runs when you select a search result
     def selectResult(e : ft.ControlEvent):
         # Prints the anime name selected
@@ -581,7 +589,7 @@ def main(page : ft.Page):
         # Edits the name variable to the anime name
         global name
         name = e.control.text
-        # Creates a download button with the click event as the "download" function
+        # Creates a download button with the click event as the "download" function 
         downloadButton = ft.ElevatedButton(text = "Download",on_click=download,width=187)
         # Creates a result page for the selected anime
         resultPage = ft.Column(
@@ -648,7 +656,7 @@ def main(page : ft.Page):
                 num += l
         # Returns the num variable as an int
         return int(num)
-
+    
     # Function that runs when you select a search result from the homepage
     def selectHomePageResult(e : ft.ControlEvent):
         # Prints the anime name selected
@@ -663,7 +671,7 @@ def main(page : ft.Page):
         # Edits the name variable to the anime name
         global name
         name = e.control.text
-        # Creates a download button with the click event as the "download" function
+        # Creates a download button with the click event as the "download" function 
         downloadButton = ft.ElevatedButton(text = "Download",on_click=download,width=187)
         # Creates a result page for the selected anime
         resultPage = ft.Column(
@@ -748,7 +756,7 @@ def main(page : ft.Page):
                 ft.Container(
                     content = ft.Column(
                         controls = [
-
+                            
                             ft.Image(
                                 src = results[result][1],
                                 width= 140,
@@ -763,7 +771,7 @@ def main(page : ft.Page):
                             )
                     ]),
                     width =  200
-                )
+                ) 
             )
             # Increments the i
             i += 1
@@ -773,7 +781,7 @@ def main(page : ft.Page):
                 resultsList.append(thisrow)
                 # Returns the i to 1
                 i = 1
-        # At the end if i isn't 1 then there are results that aren't placed
+        # At the end if i isn't 1 then there are results that aren't placed 
         if i != 1:
             # Adds the result list
             resultsList.append(thisrow)
@@ -839,7 +847,7 @@ def main(page : ft.Page):
                             ),ft.Text(results[result][1])
                     ]),
                     width =  200
-                )
+                ) 
             )
             # Increments the i
             i += 1
@@ -849,7 +857,7 @@ def main(page : ft.Page):
                 resultsList.append(thisrow)
                 # Returns the i to 1
                 i = 1
-        # At the end if i isn't 1 then there are results that aren't placed
+        # At the end if i isn't 1 then there are results that aren't placed 
         if i != 1:
             # Adds the result list
             resultsList.append(thisrow)
@@ -862,7 +870,7 @@ def main(page : ft.Page):
         page.clean()
         # Adds the results page
         page.add(resultsPage)
-
+        
     # Text field for the new domain
     newDomainField = ft.TextField(
         label = "New domain"
@@ -877,7 +885,7 @@ def main(page : ft.Page):
             # Edits the domain variable to the new domain
             global domain
             domain = newDomainField.value
-
+    
     # Text with the old domain name for reference when changing the domain
     oldDomainText = ft.Text(
                 value = f"Old domain: {domain}"
@@ -940,7 +948,7 @@ def main(page : ft.Page):
         label="Color code",
         value=data["Color"]
     )
-
+    
     # Function to save the new preferences
     def savePreferences(e):
         # Runs if all the fields aren't empty
@@ -958,7 +966,7 @@ def main(page : ft.Page):
             # Saves the data to the json file
             with open("./preferences.json",'w') as f:
                 json.dump(data,f,indent=4)
-
+            
             # Cleans the page
             page.clean()
             # Sets the page theme to the mode from the dropdown menu
@@ -1010,7 +1018,7 @@ def main(page : ft.Page):
             ft.Text("Put a color code or the word \"random\""),colorTheme,
             # Container with the save button
             ft.Container(
-                # Save button with the "savePreferences" function
+                # Save button with the "savePreferences" function 
                 content = ft.ElevatedButton(text="Save",on_click=savePreferences),
                 # Alligned to centre
                 alignment=ft.alignment.center
@@ -1079,7 +1087,7 @@ def main(page : ft.Page):
             ft.Container(
                 # Text of size 12
                 content = ft.Text(
-                    value="V3.1.2",
+                    value="V3.1.5",
                     size = 12
                 ),
                 # Container padding of size 30
@@ -1089,8 +1097,8 @@ def main(page : ft.Page):
         # Main page horizontal alignment is centre
         horizontal_alignment= ft.CrossAxisAlignment.CENTER
     )
-
-    # If the email or password aren't useable
+    
+    # If the email or password aren't useable 
     if len(data["Email"]) < 1 or len(data["Password"]) < 1:
         # Adds the login page
         page.add(loginScreen)

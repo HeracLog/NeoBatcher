@@ -2,10 +2,8 @@
 Script to batch download anime from gogoanime
 # Required libraries
 Run `pip install -r req.txt` <br>
-You need chrome for this script to run.<br>
 You need the following libraries to run the script
 - requests
-- selenium
 - lxml
 - flet
 - bs4

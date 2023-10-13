@@ -1,4 +1,8 @@
 requests
-bs4
 lxml
+bs4
 flet
+reportlab
+pillow
+ngram
+pypdf

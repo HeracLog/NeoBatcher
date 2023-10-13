@@ -2,6 +2,12 @@ import random
 import string
 import time
 import requests
+from ngram import NGram
+from PIL import Image
+from pypdf import PdfMerger
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from io import BytesIO
 from bs4 import BeautifulSoup as bs, Tag
 import os
 import flet as ft
@@ -28,11 +34,263 @@ resultsPage = ft.Column(
 )
 # Loads the data
 data = loadData()
+direc = data["Directory"]
 # Finds theme for the app
 defaultMode = data["Mode"]
 # Loads the domain from the file
 domain : str = data["Domain"]
 
+
+query = ""
+# Function that searches for managa
+def searchForManga(query : str) -> dict:
+    # Replaces spaces with "_"
+    query = query.replace(" ","_")
+    # Creates link
+    link : str = f"https://manganato.com/search/story/{query}"
+    # Creates new session
+    session : requests.Session = requests.session()
+    # Fetches the html data of the search page
+    htmlData = session.get(link).text
+    # Parses the data into a format we can look for tags in
+    parsedData = bs(htmlData,"lxml")
+
+    # Gets the div containing the search results
+    resultsContainer : Tag = parsedData.find("div",{"class":"panel-search-story"})
+    # Creates an empty dictionary
+    resultsDict : dict[str,list] = {} 
+    # Loops over search results
+    for result in resultsContainer.find_all("div",{"class":"search-story-item"}):
+        # Gets the <a> tag containg the manga data
+        aTag : Tag = result.find("a")
+        imgSrc = result.find("img").get("src")
+        # Updates the dictionary with the new data
+        resultsDict.update({aTag.get("title"):[aTag.get("href"),imgSrc]})
+    
+    return resultsDict
+
+def closeness(result: str):
+    global query
+    query = query.lower()
+    result = result.lower()
+    biGram = NGram(n=2)
+    quadGram = NGram(n=4)
+    quadGramWeight = 0.6
+    biGramWeight = 0.4
+    queryBiGram = set(biGram.split(query))
+    queryQuadGram = set(quadGram.split(query))
+    resultBiGram = set(biGram.split(result))
+    resultQuadGram = set(quadGram.split(result))
+    biIntersection = queryBiGram.intersection(resultBiGram)
+    quadIntersection = queryQuadGram.intersection(resultQuadGram)
+
+    closeness = ((len(biIntersection) / len(queryBiGram)) * biGramWeight) + ((len(quadIntersection) / len(queryQuadGram)) * quadGramWeight)
+
+    return 1-closeness
+
+def sortSearchResults(results: dict) -> list:
+    resultsKeys = sorted(results.keys(),key=closeness)
+    return resultsKeys
+
+
+
+# Function that makes pdfs of the manga chapter 
+def pdfize(_dir,name,chapter,page:ft.Page):
+        # Alert of pdfing the chapter initialization
+        print(f"Started pdfiziing chapter {chapter}")
+        # Selects all image files in a directory acoording to certain parameters
+        image_files = [f for f in os.listdir(_dir) if f.endswith('.jpg') or f.endswith('.jpeg') or f.endswith('.png')]
+
+        # Creates a pdf canvas of letter size and name of the manga and its chapter
+        pdf = canvas.Canvas(f'{_dir}/{name}-{chapter}.pdf', pagesize=letter)
+        progress_bar = ft.ProgressBar(
+            width=600,
+            color= generate_hex_color_code()
+            )
+        labelText = ft.Text(f"Pdfizing chapter {chapter}:     0/{len(image_files)}")
+        page.controls.append(labelText)
+        page.controls.append(progress_bar)
+        page.update()
+
+        # Loops through all image files and creates a loading bar for it
+        for i in range(0,len(image_files)):
+            # Defines images path in numerical order
+            image_path =f"{_dir}/{i}.jpg"
+            # Opens the image file to be written in the pdf
+            img = Image.open(image_path)
+            # Calculate the scaling factor to fit the image within the PDF page
+            # img.size is a tuple of (width,height)
+            width, height = img.size
+            # Gets the max size of the page
+            max_width, max_height = letter
+            # Scaling factor is the max dim / img dim,
+            # We select the smallest so the other dimension gets displayed properly
+            scaling_factor = min(max_width/width, max_height/height)
+
+            # Scale the image size
+            new_width = int(width * scaling_factor)
+            new_height = int(height * scaling_factor)
+
+            # Draw the image on the PDF canvas
+            pdf.drawImage(image_path, 0, 0, width=new_width, height=new_height, preserveAspectRatio=True)
+            progress_bar.value = (i+1)/len(image_files)
+            labelText.value = f"Pdfizing chapter {chapter}:     {i+1}/{len(image_files)}"
+            labelText.update()
+            progress_bar.update()
+            page.update()
+            # Check if its the last page
+            # If its not we create a new page
+            if i < len(image_files) - 1:
+                pdf.showPage()
+        # Saves the pdf file
+        pdf.save()
+        # Alerts the pdf is done
+        print(f"Done pdfizing chapter {chapter}")
+
+# Function to merge all pdf files of a manga into one pdf file
+def mergePDFS(direc,name,page : ft.Page):
+    # Finds all chapter direcetories 
+    directiories = [d for d in os.listdir(direc) if os.path.isdir(os.path.join(direc,d))]
+    # Makes an empty list where the pdf files will be
+    pdfFiles = []
+    # Loops through directories and finds all pdf files
+    for dirr in directiories:
+        for f in os.listdir(os.path.join(direc,dirr)):
+            if f.endswith(".pdf"):
+                pdfFiles.append(os.path.join(direc,os.path.join(dirr,f)))
+
+    # Function that finds the numeric part of the pdf name
+    def get_numeric_part(filename):
+        return float(filename.split("-")[-1].replace(".pdf",""))
+
+    # Sorts the pdf files according to the chapter number
+    pdfFiles.sort(key=get_numeric_part)
+    # Makes a pdf merger object
+    merger = PdfMerger()
+    progressBar = ft.ProgressBar(
+        width= 600,
+        color= generate_hex_color_code()
+    )
+    labelText = ft.Text(value=f"Merging all PDFs....     0/{len(pdfFiles)}")
+    page.controls.append(labelText)
+    page.controls.append(progressBar)
+    page.update()
+    # Loops through all files append them while displaying the progress in a progress bar
+    for i in range(len(pdfFiles)):
+        file = pdfFiles[i]
+        merger.append(file)
+        labelText.value = f"Merging all PDFs....     {i+1}/{len(pdfFiles)}"
+        progressBar.value = (i+1)/len(pdfFiles)
+        labelText.update()
+        progressBar.update()
+        page.update()
+    # Creates the file and closes the megrger object
+    merger.write(f"{direc}{name}.pdf")
+    merger.close()
+
+
+
+
+def getAllLinks(link : str) -> None:
+    session = requests.session()
+    text = session.get(link).text
+    parsedData = bs(text,"lxml")
+    chapList = parsedData.find("div",{"class":"panel-story-chapter-list"})
+    chapters = list(chapList.find_all("li",{"class":"a-h"}))
+    chaptersData = {}
+    chapters.reverse()
+    for i in range(len(chapters)):
+        chapLink = chapters[i].find("a").get("href")
+        chapName = chapters[i].find("a").getText()
+        chapNum = chapLink.split("-")[-1]
+        chaptersData.update({chapName:[chapLink,chapNum]})
+        
+    return chaptersData
+
+# Saves the chapter in the designated folder
+def saveManga(link: str,name: str,chapter: int,page:ft.Page):
+    # Starts a new session
+    sesh = requests.session()
+    # Fetches the html data
+    text = sesh.get(link).text
+    # Soups the data so we can look through it
+    text = bs(text,"lxml")
+    # Gets the div where all the images are stored
+    imgDiv = text.find("div",{"class":"container-chapter-reader"})
+    # imgDiv = [div for div in text.find_all("div") if "reader" in str(div.get("class"))][0]
+    # Gets all the image links
+    imgs = [img.get("src") for img in imgDiv.find_all("img") if "page" in str(img.get("title"))]
+    # Headers extracted manually from the website
+    headers = {
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.7',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Referer': 'https://chapmanganato.com/',
+        'Sec-Ch-Ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Brave";v="114"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Linux"',
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Gpc': '1',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+    }
+    # Creates a folder for the chapter under the parent manga folder
+    try:
+        os.mkdir(f"{direc}{name}/{name}-{chapter}")
+    except:
+        print("Directory exists")
+    # Loops through all images and shows progress in the progress bar
+    progress_bar = ft.ProgressBar(
+        width=600,
+        color= generate_hex_color_code()
+    )
+    labelText = ft.Text(f"Saving chapter {chapter}:     0/{len(imgs)}")
+    page.controls.append(labelText)
+    page.controls.append(progress_bar)
+    page.update()
+
+    for i in range(0,len(imgs)):
+        if not os.path.exists(f"{direc}{name}/{name}-{chapter}/{i}.jpg"):
+            # Requests the files using the session and the extracted headers
+            res = sesh.get(imgs[i],headers=headers)
+
+            # If server response is OK we save the image
+            if res.status_code == 200:
+                # Reads the bytes from the response
+                image_content = BytesIO(res.content)
+                # Opens the bytes as an image
+                image = Image.open(image_content)
+                # Changes mode from P mode to RGB
+                image = image.convert('RGB')
+                # Saves the image in its designated directory
+                image.save(f"{direc}{name}/{name}-{chapter}/{i}.jpg")
+                progress_bar.value = (i+1)/len(imgs)
+                labelText.value = f"Saving chapter {chapter}:     {i+1}/{len(imgs)}"
+                labelText.update()
+                progress_bar.update()
+                page.update()
+            # If response isnt OK we log an error 
+            else:
+                print(res.status_code)
+        else:
+            print(f"Page {i} of chapter {chapter} exists, skipping...")
+
+resultsPage = ""
+name = ""
+dictChap = {}
+results = []
+optionsRes = []
+startChapterDropdown = ft.Dropdown(
+        options = optionsRes,
+        label="Start chapter"
+    )
+endChapterDropdown = ft.Dropdown(
+        options = optionsRes,
+        label="End chapter"
+    )
 # Function to change domain name
 # Search function
 def search(search : str) -> str | dict:
@@ -207,7 +465,9 @@ def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
     # Logs in using the data
     s.post(linkLogin,data=login_data, headers=dict(Referer=linkLogin))
     # Loops for all episodes
+    mainQuality = quality
     for ep in eps:
+        tried : list = []
         # Episode link can be changed
         link = f"{format(LinkofPath)}-{ep}"
         
@@ -216,15 +476,19 @@ def LoginAndGoToLink(eps,LinkofPath,quality,email,password):
         # Sorts html data
         soup = bs(html_page, "lxml")
         sizeBefore : int = len(Links)
+        tried.append(quality)
         # Finds download links
-        for link in soup.find_all("a"):
-            # You can set the resloution from '360, 480, 720, 1080'
-            if quality in format(link.text):
-                x = link.get("href")
-                Links.append(x) 
-        if sizeBefore == len(Links):
-            print(f"Couldn't get episode {ep} at quality {quality}")
-            Links.append("")
+        for i in range(0,3):
+            for link in soup.find_all("a"):
+                # You can set the resloution from '360, 480, 720, 1080'
+                if quality in format(link.text):
+                    x = link.get("href")
+                    Links.append(x) 
+            if sizeBefore == len(Links):
+                print(f"Couldn't get episode {ep} at quality {quality}")
+                quality = getNewQuality(tried)
+            else:
+                break
     # Returns Links array to other functions
     return Links
 
@@ -239,7 +503,7 @@ def generate_hex_color_code():
 # Function to determine next quality in line for downloading tries
 def getNewQuality(tried : list) -> str:
     # Returns the quality next in line
-    for quality in ["360","480","720","1080"]:
+    for quality in ["480","360","1080","720"]:
         if quality not in tried:
             return quality
     # Returns None if all qualities were tried
@@ -253,7 +517,9 @@ def main(page : ft.Page):
         label="Email"
     )
     passwordField = ft.TextField(
-        label="Password"
+        label="Password",
+        password = True,
+        can_reveal_password= True
     )
     # Login action function
     def login(e):
@@ -312,7 +578,7 @@ def main(page : ft.Page):
         ))
     # Setting up screen size
     page.window_width = 600
-    page.window_height = 440
+    page.window_height = 500
     page.window_resizeable = False
     page.window_maximizable = False
     page.update()
@@ -326,19 +592,17 @@ def main(page : ft.Page):
     page.horizontal_alignment=ft.CrossAxisAlignment.CENTER
     
     # Intializes fields to be used in download menu
-    # Search field contains the anime to be searched for
-    searchField = ft.TextField(
-        label= "Enter anime name"
-    )
     # Defines the episode we start from
     epFromField = ft.TextField(
         label = "Start from episode",
-        width = 187
+        width = 187,
+        keyboard_type= ft.KeyboardType.NUMBER
     )
     # Defines the episode we stop at
     epNumField = ft.TextField(
         label = "Till episode",
-        width = 187
+        width = 187,
+        keyboard_type= ft.KeyboardType.NUMBER
     )
     # Dropdown menu for download qualities
     quaityDropDown = ft.Dropdown(
@@ -383,7 +647,214 @@ def main(page : ft.Page):
             results = search(searchField.value)
             # Places all the buttons containing the anime names
             placeResults(results.keys())
+    # Search field contains the anime to be searched for
+    searchField = ft.TextField(
+        label= "Enter anime name",
+        on_submit= tempSearch
+    )
+    def tempMangaSearch(e):
+        # If the search field isn't empty
+        if searchMangaField.value:
+            # Sets the results dict as global
+            global results
+            # Fetches the search results
+            global query
+            query = searchMangaField.value
+            results = searchForManga(searchMangaField.value)
+            # Places all the buttons containing the anime names
+            placeMangaResults(sortSearchResults(results))
+    # Search field contains the anime to be searched for
+    searchMangaField = ft.TextField(
+        label= "Enter manga name",
+        on_submit= tempSearch
+    )
+    def save(e):
+        try:
+            os.mkdir(f"{direc}{name}")
+        except:
+            print("Directory exists")
+        page.clean()
+        page.add(
+            ft.Container(content=ft.Text(value=f"{name}"),))
+        container = ft.Column(
+        )
+        page.add(container)
+        page.add(ft.ElevatedButton(text="Main menu",on_click=loadMainPage))
+        startChapter = startChapterDropdown.value
+        endChapter = endChapterDropdown.value
+        startChapterNum = list(dictChap.keys()).index(startChapter)
+        endChapterNum = list(dictChap.keys()).index(endChapter)
+        chaptersList = list(dictChap.keys())
+        for i in range(startChapterNum,endChapterNum+1):
+            chapterNumber = dictChap[chaptersList[i]][1]
+            saveManga(dictChap[chaptersList[i]][0],name,chapterNumber,container)
+            pdfize(f"{direc}{name}/{name}-{chapterNumber}",name,chapterNumber,container)
+        mergePDFS(f"{direc}{name}",name,container)
+    def selectMangaResult(e : ft.ControlEvent):
+        text = e.control.text
+        global name
+        name = text
+        print(text, "selected")
+        link = results[text][0]
+        global dictChap
+        dictChap = getAllLinks(link)
+        global optionsRes
+        optionsRes = [ft.dropdown.Option(i) for i in dictChap.keys()]
+        startChapterDropdown.options = optionsRes
+        endChapterDropdown.options = optionsRes
+        saveButton = ft.ElevatedButton(
+            text = "Save",
+            width = 190,
+            on_click=save
+            )
+        backButton = ft.ElevatedButton(
+                text = "Back",
+                width = 190,
+                on_click=back
+            )
+        mainMenuButton = ft.ElevatedButton(
+                text= "Main Menu",
+                width = 190,
+                on_click=loadMainPage
+            )
+        thisResultPage = ft.Column(
+            controls=[
+                ft.Text(value=text),
+                ft.Container(
+                    height=20
+                ),
+                startChapterDropdown,
+                endChapterDropdown,
+                ft.Row(
+                    controls=[
+                        saveButton,backButton,mainMenuButton
+                    ],
+                    width = 600
+                )
+            ]
+        )
+        page.clean()
+        page.add(thisResultPage)
+
+    def placeMangaResults(resultKeys):
+            # Sets variables as global
+            global resultsPage
+
+            # List of results
+            resultsList : list = []
+            # Results page column
+            resultsPage = ft.Column(
+                controls= resultsList
+            )
+            searchquery = searchField.value
+            searchquery = searchquery.capitalize()
+            resultsPage.controls.append(
+                ft.Container(
+                    content= ft.Text(
+                        value=f"Search : {searchquery}",
+                        weight= ft.FontWeight.BOLD,
+                        size = 23,
+                    ),
+                    alignment= ft.alignment.top_center
+                )
+            )
+            # The index variable we use to know the placement of the button
+            i : int = 1
+
+            # Loops through the results on page
+            for result in resultKeys:
+                # If i is 1 then we add a new row
+                if i == 1:
+                    # Creates a new row list
+                    resultsRow : list = []
+                    # Creates a new Row with the list
+                    thisrow = ft.Row(
+                        controls=resultsRow
+                    )
+                # Appends a button to the result row list
+                resultsRow.append(
+                    ft.Container(
+                        content = ft.Column(
+                            controls = [
+                                
+                                ft.Image(
+                                    src = results[result][1],
+                                    width= 140,
+                                    height = 198,
+                                    fit=ft.ImageFit.FILL,
+                                    repeat=ft.ImageRepeat.NO_REPEAT,
+                                    border_radius=ft.border_radius.all(10)
+                                ),
+                                ft.TextButton(
+                                    text= f"{result}",
+                                    on_click= selectMangaResult
+                                )
+                        ]),
+                        width =  200
+                    ) 
+                )
+                # Increments the i
+                i += 1
+                # If i is 4
+                if i == 4:
+                    # We append the row to the list
+                    resultsList.append(thisrow)
+                    # Returns the i to 1
+                    i = 1
+            # At the end if i isn't 1 then there are results that aren't placed 
+            if i != 1:
+                # Adds the result list
+                resultsList.append(thisrow)
+            resultsPage.controls.append(
+                ft.Container(
+                    content = ft.ElevatedButton(text ="Back",on_click=loadMainPage)
+                )
+            )
+            # Cleans the page
+            page.clean()
+            # Adds the results page
+            page.add(resultsPage)
+    # Search page column
+    mangaSearchPage = ft.Column(
+        controls=[
+            # Bold text of size 23
+            ft.Text(
+                value= "Search for manga",
+                weight=ft.FontWeight.BOLD,
+                size = 23
+            ),
+            # Search field that we defined before
+            searchMangaField,
+            # Row containing the buttons we will use
+            ft.Row(
+                controls=
+                [
+                    # Container containing the Search button
+                    ft.Container(
+                        # Search button that runs the "tempSearch" function
+                        content = ft.ElevatedButton(text = "Search",on_click=tempMangaSearch),
+                        # The container is alligned to top left
+                        alignment= ft.alignment.top_left
+                    ),
+                    # Container acting as a spacer
+                    ft.Container(
+                        visible=True,
+                        width =390
+                    ),
+                    # Container containing the Back button
+                    ft.Container(
+                        # Back button that runs the "loadMainPage" function
+                        content = ft.ElevatedButton(text = "Back",on_click=loadMainPage),
+                        # Container is alligned to top right
+                        alignment= ft.alignment.top_right,
+                    )
+                ],
+                # The row is restricted by width 400
+                width = 600,
+            ),
             
+        ]
+    )
     # Back button function
     def back(e):
         # Removes everything from the page
@@ -441,7 +912,7 @@ def main(page : ft.Page):
                     # Actual progress bar
                     # Creates a progress bar with a random color code
                     progress_bar = ft.ProgressBar(
-                        width=400,
+                        width=600,
                         color= generate_hex_color_code()
                     )
                     # Total bytes collected
@@ -936,7 +1407,9 @@ def main(page : ft.Page):
     # Password field with the loaded value from the data file
     passwordPField = ft.TextField(
         label="Password",
-        value=data["Password"]
+        value=data["Password"],
+        can_reveal_password = True,
+        password = True
     )
     # Directory field with the loaded value from the data file
     defaultDirectory = ft.TextField(
@@ -1054,6 +1527,9 @@ def main(page : ft.Page):
 
     # Button to load settings page
     settingsButton = ft.ElevatedButton(text="Settings", on_click=loadMenu)
+    def loadManga(e):
+        page.clean()
+        page.add(mangaSearchPage)
     # Main page column
     mainPage = ft.Column(
         controls= [
@@ -1079,6 +1555,7 @@ def main(page : ft.Page):
             # Row allignment is centre
             alignment= ft.MainAxisAlignment.CENTER
             ),
+            ft.ElevatedButton(text="Download Manga", on_click=loadManga),
             # A button that loads the change domain page with the "loadChangeDomainPage" function
             ft.ElevatedButton(text="Change Domain", on_click=loadChangeDomainPage),
             # Settings button
@@ -1087,7 +1564,7 @@ def main(page : ft.Page):
             ft.Container(
                 # Text of size 12
                 content = ft.Text(
-                    value="V3.1.5",
+                    value="V3.2",
                     size = 12
                 ),
                 # Container padding of size 30

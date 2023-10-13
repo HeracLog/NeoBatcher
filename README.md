@@ -7,6 +7,10 @@ You need the following libraries to run the script
 - lxml
 - flet
 - bs4
+- ngram
+- pillow
+- pypdf
+- reportlab
 # How to use
 On first login you will be prompted to enter your gogoanime email and password, these are stored locally and only locally<br>
 ![login page](https://i.imgur.com/UP9bGCB.png)<br>

@@ -2,7 +2,8 @@
     "Email": "",
     "Password": "",
     "Mode": "Dark",
-    "Color": "#E47B1C",
+    "Color": "random",
     "Directory": "./",
-    "Domain": "gogoanimehd.io"
+    "Manga_Directory": "./",
+    "Domain": "anitaku.to"
 }

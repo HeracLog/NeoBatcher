@@ -35,6 +35,13 @@ resultsPage = ft.Column(
 # Loads the data
 data = loadData()
 direc = data["Directory"]
+mangaDirec = data["Manga_Directory"]
+try:
+    os.mkdir(direc)
+except: pass
+try:
+    os.mkdir(mangaDirec)
+except : pass
 # Finds theme for the app
 defaultMode = data["Mode"]
 # Loads the domain from the file
@@ -239,7 +246,7 @@ def saveManga(link: str,name: str,chapter: int,page:ft.Page):
     }
     # Creates a folder for the chapter under the parent manga folder
     try:
-        os.mkdir(f"{direc}{name}/{name}-{chapter}")
+        os.mkdir(f"{mangaDirec}{name}/{name}-{chapter}")
     except:
         print("Directory exists")
     # Loops through all images and shows progress in the progress bar
@@ -253,7 +260,7 @@ def saveManga(link: str,name: str,chapter: int,page:ft.Page):
     page.update()
 
     for i in range(0,len(imgs)):
-        if not os.path.exists(f"{direc}{name}/{name}-{chapter}/{i}.jpg"):
+        if not os.path.exists(f"{mangaDirec}{name}/{name}-{chapter}/{i}.jpg"):
             # Requests the files using the session and the extracted headers
             res = sesh.get(imgs[i],headers=headers)
 
@@ -266,7 +273,7 @@ def saveManga(link: str,name: str,chapter: int,page:ft.Page):
                 # Changes mode from P mode to RGB
                 image = image.convert('RGB')
                 # Saves the image in its designated directory
-                image.save(f"{direc}{name}/{name}-{chapter}/{i}.jpg")
+                image.save(f"{mangaDirec}{name}/{name}-{chapter}/{i}.jpg")
                 progress_bar.value = (i+1)/len(imgs)
                 labelText.value = f"Saving chapter {chapter}:     {i+1}/{len(imgs)}"
                 labelText.update()
@@ -291,6 +298,8 @@ endChapterDropdown = ft.Dropdown(
         options = optionsRes,
         label="End chapter"
     )
+newColorCode : str = ""
+randomColorCode : str = ""
 # Function to change domain name
 # Search function
 def search(search : str) -> str | dict:
@@ -337,7 +346,7 @@ def formatHomePageLink(link : str) -> str:
 # Function that fetches homepage
 def getHomePage() -> dict:
     # Link is simply just the domain
-    link : str = f"https://{domain}"
+    link : str = f"https://{domain}/home.html"
     # Creates a new session
     session : requests.Session = requests.session()
     # Gets the html data
@@ -565,7 +574,8 @@ def main(page : ft.Page):
     # If the color theme prefernces is random
     if data["Color"] == "random":
         # We generate a random color code for the theme
-        colorCode = generate_hex_color_code()
+        randomColorCode = generate_hex_color_code()
+        colorCode = randomColorCode
     else:
         # Otherwise we use the one provided
         colorCode = data["Color"]
@@ -666,11 +676,11 @@ def main(page : ft.Page):
     # Search field contains the anime to be searched for
     searchMangaField = ft.TextField(
         label= "Enter manga name",
-        on_submit= tempSearch
+        on_submit= tempMangaSearch
     )
     def save(e):
         try:
-            os.mkdir(f"{direc}{name}")
+            os.mkdir(f"{mangaDirec}{name}")
         except:
             print("Directory exists")
         page.clean()
@@ -688,8 +698,8 @@ def main(page : ft.Page):
         for i in range(startChapterNum,endChapterNum+1):
             chapterNumber = dictChap[chaptersList[i]][1]
             saveManga(dictChap[chaptersList[i]][0],name,chapterNumber,container)
-            pdfize(f"{direc}{name}/{name}-{chapterNumber}",name,chapterNumber,container)
-        mergePDFS(f"{direc}{name}",name,container)
+            pdfize(f"{mangaDirec}{name}/{name}-{chapterNumber}",name,chapterNumber,container)
+        mergePDFS(f"{mangaDirec}{name}",name,container)
     def selectMangaResult(e : ft.ControlEvent):
         text = e.control.text
         global name
@@ -928,17 +938,29 @@ def main(page : ft.Page):
                     
                     # Opens file in binary write mode
                     with open(f"{path}/EP{name}.mp4", "wb") as file:
+                        speedTime = time.time()
+                        timePassed = 0
+                        totalBytes = 0
+                        speed = 0
                         # Loops through response as it write it in chunks
                         for data in response.iter_content(block_size):
                             totalGotten += len(data)
                             # Updates progress bar
                             progress_bar.value = totalGotten/total_size_in_bytes
                             # Writes data
+                            speedDiff = time.time() - speedTime
+                            timePassed += speedDiff
+                            totalBytes += 1024
+                            if timePassed > 0.05:
+                                speed = totalBytes / timePassed
+                                totalBytes = 0
+                                timePassed = 0
                             file.write(data)
                             # Updates the download text
-                            textF.value = f"{round(totalGotten/(1024*1024),2)} / {round(total_size_in_bytes/(1024*1024),2)} MBs"
+                            textF.value = f"{round(totalGotten/(1024*1024),2)} / {round(total_size_in_bytes/(1024*1024),2)} MBs  {speed/1024: .2f}KBs/s"
                             # Updates the whole page
                             page.update()
+                            speedTime = time.time()
                     # Saves the time after the episode is saved
                     timeAfter = time.time()
                     # If it took less than 10 seconds it is most probably an error
@@ -1386,7 +1408,12 @@ def main(page : ft.Page):
             )
         ]
     )
-
+    def modeDropDownChange(e):
+        if e.control.value == 'Dark':
+            page.theme_mode = "Dark"
+        else:
+            page.theme_mode = "Light"
+        page.update()
     # Color mode dropdown menu
     modeDropDown = ft.Dropdown(
         options=[
@@ -1397,7 +1424,8 @@ def main(page : ft.Page):
         # The hint text is the current mode
         hint_text= data["Mode"],
         # The actual value is also the current mode
-        value=data["Mode"]
+        value=data["Mode"],
+        on_change= modeDropDownChange
     )
     # Email field with the loaded value from the data file
     emailPField = ft.TextField(
@@ -1415,13 +1443,16 @@ def main(page : ft.Page):
     defaultDirectory = ft.TextField(
         label="Download Directory",
         value=data["Directory"]
+    )    
+    defaultMangaDirectory = ft.TextField(
+        label="Manga Directory",
+        value=data["Manga_Directory"]
     )
     # Color theme field with the loaded value from the data file
     colorTheme = ft.TextField(
         label="Color code",
         value=data["Color"]
     )
-    
     # Function to save the new preferences
     def savePreferences(e):
         # Runs if all the fields aren't empty
@@ -1432,10 +1463,17 @@ def main(page : ft.Page):
             data["Password"] = passwordPField.value
             # Sets the data from the direcotiry field value
             data["Directory"] = defaultDirectory.value
+            try:
+                os.mkdir(defaultDirectory.value)
+            except: pass
+            data["Manga_Directory"] = defaultMangaDirectory.value
+            try:
+                os.mkdir(defaultMangaDirectory.value)
+            except: pass
             # Sets the data from the mode dropdown value
             data["Mode"] = modeDropDown.value
             # Sets the data from the color theme value
-            data["Color"] = colorTheme.value
+            data["Color"] = newColorCode if radioGP.value == "Slider" else "random"
             # Saves the data to the json file
             with open("./preferences.json",'w') as f:
                 json.dump(data,f,indent=4)
@@ -1446,12 +1484,13 @@ def main(page : ft.Page):
             page.theme_mode = modeDropDown.value
             colorCode = ""
             # If the color theme prefernces is random
-            if data["Color"] == "random":
+            if radioGP.value == "Random":
+                randomColorCode = generate_hex_color_code()
             # We generate a random color code for the theme
-                colorCode = generate_hex_color_code()
+                colorCode = randomColorCode
             else:
                 # Otherwise we use the one provided
-                colorCode = data["Color"]
+                colorCode = newColorCode
             # Sets up the thene with the color code from above
             page.theme = ft.Theme(
                 color_scheme=ft.ColorScheme(
@@ -1462,6 +1501,65 @@ def main(page : ft.Page):
             page.update()
             # Adds the main page
             page.add(mainPage)
+    
+    def onSlide(e):
+        redHex = hex(int(redSlider.value*255)).replace('0x','')
+        if len(redHex) == 1:
+            redHex = f"0{redHex}"
+        blueHex = hex(int(blueSlider.value*255)).replace('0x','')
+        if len(blueHex) == 1:
+            blueHex = f"0{blueHex}"
+        greenHex = hex(int(greenSlider.value*255)).replace('0x','')
+        if len(greenHex) == 1:
+            greenHex = f"0{greenHex}"
+        global newColorCode
+        newColorCode = f"#{redHex}{greenHex}{blueHex}"
+        page.theme = ft.Theme(
+            color_scheme=ft.ColorScheme(
+            primary= newColorCode
+            )
+        )
+        page.update()
+
+    redSlider = ft.Slider(
+        on_change=onSlide
+    )
+    blueSlider = ft.Slider(
+        on_change=onSlide
+    )
+    greenSlider = ft.Slider(
+        on_change=onSlide
+    )
+    def radioPress(e):
+        value = e.control.value
+        global colorValue
+        if value == "Random":
+            redSlider.disabled = True
+            greenSlider.disabled = True
+            blueSlider.disabled = True
+        else:
+            redSlider.disabled = False
+            greenSlider.disabled = False
+            blueSlider.disabled = False
+        page.update()
+
+    radioGP = ft.RadioGroup(content=ft.Column([
+        ft.Radio(value="Random", label="Random"),
+        ft.Radio(value="Slider", label="Slider")]), on_change=radioPress)
+    
+    if data["Color"] != "random":
+        redSlider.value = int(data["Color"][1:3],16) / 255
+        greenSlider.value = int(data["Color"][3:5],16) / 255
+        blueSlider.value = int(data["Color"][5:],16) / 255
+        radioGP.value = "Slider"
+    else:
+        redSlider.value = int(randomColorCode[1:3],16) / 255
+        greenSlider.value = int(randomColorCode[3:5],16) / 255
+        blueSlider.value = int(randomColorCode[5:],16) / 255
+        radioGP.value = "Random"
+        redSlider.disabled = True
+        greenSlider.disabled = True
+        blueSlider.disabled = True
 
     # Preferences control page
     preferencesPage = ft.Column(
@@ -1486,9 +1584,8 @@ def main(page : ft.Page):
             # Email and password fields we created earlier
             emailPField,passwordPField,
             # Text acting as a tool tip and the default directory field we created earlier
-            ft.Text("Directory name must end with a slash /"),defaultDirectory,
-            # Text acting as a tool tip and the color theme field we created earlier
-            ft.Text("Put a color code or the word \"random\""),colorTheme,
+            ft.Text("Directory name must end with a slash /"),defaultDirectory,defaultMangaDirectory,
+            ft.Text("Color theme: "),radioGP,ft.Text("Red: "),redSlider,ft.Text("Green: "),greenSlider,ft.Text("Blue: "),blueSlider,
             # Container with the save button
             ft.Container(
                 # Save button with the "savePreferences" function 
@@ -1564,7 +1661,7 @@ def main(page : ft.Page):
             ft.Container(
                 # Text of size 12
                 content = ft.Text(
-                    value="V3.2",
+                    value="V3.3",
                     size = 12
                 ),
                 # Container padding of size 30

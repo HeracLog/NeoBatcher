@@ -7,7 +7,6 @@ You need the following libraries to run the script
 - lxml
 - flet
 - bs4
-- ngram
 - pillow
 - pypdf
 - reportlab

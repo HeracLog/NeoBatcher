@@ -2,7 +2,6 @@ import random
 import string
 import time
 import requests
-from ngram import NGram
 from PIL import Image
 from pypdf import PdfMerger
 from reportlab.lib.pagesizes import letter
@@ -49,56 +48,113 @@ domain : str = data["Domain"]
 
 
 query = ""
+language = ""
 # Function that searches for managa
 def searchForManga(query : str) -> dict:
-    # Replaces spaces with "_"
-    query = query.replace(" ","_")
-    # Creates link
-    link : str = f"https://manganato.com/search/story/{query}"
-    # Creates new session
+    link = f'https://api.mangadex.org/manga?title={query}&limit=25&contentRating[]=safe&includes[]=cover_art&order[relevance]=desc'
+    session = requests.session()
+    data = session.get(link).content.decode("utf-8")
+    data = json.loads(data)
+    # parsedData = bs(data,'lxml')
+    results : dict = {}
+    for result in data['data']:
+        mangaID = result['id']
+        mangaName = result['attributes']['title']['en']
+        for i in result['relationships']:
+            if i["type"] == 'cover_art':
+                coverart = i['attributes']['fileName']
+        photolink = f'https://mangadex.org/covers/{mangaID}/{coverart}'
+        mangalink = f'https://mangadex.org/title/{mangaID}/{mangaName.replace(" ","-")}'
+        results.update({mangaName:[mangaID,photolink,mangalink]})
+    return results
+
+def getAbout(mangaID : str) :
+    link = f"https://api.mangadex.org/manga/{mangaID}?includes[]=artist&includes[]=author&includes[]=cover_art"
     session : requests.Session = requests.session()
-    # Fetches the html data of the search page
-    htmlData = session.get(link).text
-    # Parses the data into a format we can look for tags in
-    parsedData = bs(htmlData,"lxml")
+    data = session.get(link).content.decode('utf-8')
+    data = json.loads(data)
+    attributes = data['data']['attributes']
+    description = attributes['description']
+    return description['en']
 
-    # Gets the div containing the search results
-    resultsContainer : Tag = parsedData.find("div",{"class":"panel-search-story"})
-    # Creates an empty dictionary
-    resultsDict : dict[str,list] = {} 
-    # Loops over search results
-    for result in resultsContainer.find_all("div",{"class":"search-story-item"}):
-        # Gets the <a> tag containg the manga data
-        aTag : Tag = result.find("a")
-        imgSrc = result.find("img").get("src")
-        # Updates the dictionary with the new data
-        resultsDict.update({aTag.get("title"):[aTag.get("href"),imgSrc]})
-    
-    return resultsDict
+def getChapters(managaID : str) -> dict:
+    startAmmount = 200
+    link : str = f"https://api.mangadex.org/manga/{managaID}/feed?limit=200&includes[]=scanlation_group&includes[]=user&order[volume]=asc&order[chapter]=asc&offset=0&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic"
+    session : requests.Session = requests.session()
+    data = session.get(link).content.decode('utf-8')
+    data = json.loads(data)
+    allData = list()
+    allData.extend(data['data'])
+    total = data["total"]
+    chapterData : dict = {}
+    if total > startAmmount:
+        while total > startAmmount:
+            newLink = f"https://api.mangadex.org/manga/{managaID}/feed?limit={200}&includes[]=scanlation_group&includes[]=user&order[volume]=asc&order[chapter]=asc&offset={startAmmount}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic"
+            newData = session.get(newLink).content.decode('utf-8')
+            newData = json.loads(newData)
+            allData.extend(newData['data'])
+            startAmmount += 200
+    for entry in allData:
+        entryID = entry["id"]
+        attributes = entry["attributes"]
+        language = attributes["translatedLanguage"]
+        title = attributes["title"]
+        chapterNum = attributes["chapter"]
+        if title == None or len(title) == 0:
+            title = chapterNum
+        else:
+            title = f'{chapterNum}-{title}'
+        pageNum = attributes["pages"]
 
-def closeness(result: str):
-    global query
-    query = query.lower()
-    result = result.lower()
-    biGram = NGram(n=2)
-    quadGram = NGram(n=4)
-    quadGramWeight = 0.6
-    biGramWeight = 0.4
-    queryBiGram = set(biGram.split(query))
-    queryQuadGram = set(quadGram.split(query))
-    resultBiGram = set(biGram.split(result))
-    resultQuadGram = set(quadGram.split(result))
-    biIntersection = queryBiGram.intersection(resultBiGram)
-    quadIntersection = queryQuadGram.intersection(resultQuadGram)
+        if language not in chapterData:
+            chapterData.update({language:{}})
+        chapterData[language].update({title:[chapterNum,entryID,pageNum]})
+    return chapterData
 
-    closeness = ((len(biIntersection) / len(queryBiGram)) * biGramWeight) + ((len(quadIntersection) / len(queryQuadGram)) * quadGramWeight)
+def getPageNumber(pageHash : str) -> int:
+    return "".join(i for i in pageHash.split("-")[0] if i.isnumeric())
 
-    return 1-closeness
 
-def sortSearchResults(results: dict) -> list:
-    resultsKeys = sorted(results.keys(),key=closeness)
-    return resultsKeys
+def getPages(chapterID : str,mangaName : str, chapterNumber : str,page:ft.Page): 
+    link = f"https://api.mangadex.org/at-home/server/{chapterID}?forcePort443=false"
+    session : requests.Session = requests.session()
+    data = session.get(link).content.decode('utf-8')
+    data = json.loads(data)
+    chapterData = data["chapter"]
+    chapterHash = chapterData["hash"]
+    imgs = chapterData["data"]
+    baseUrl = "https://uploads.mangadex.org/data"
+    try:
+        os.mkdir(f"{mangaDirec}{name}/{name}-{chapterNumber}")
+    except:
+        print("Directory exists")
+    progress_bar = ft.ProgressBar(
+        width=600,
+        color= generate_hex_color_code()
+    )
+    labelText = ft.Text(f"Saving chapter {chapterNumber}:     0/{len(imgs)}")
+    page.controls.append(labelText)
+    page.controls.append(progress_bar)
+    page.update()
 
+    for img in imgs:
+        i = imgs.index(img)
+        imgurl = f"{baseUrl}/{chapterHash}/{img}"
+        pageNumber = getPageNumber(img)
+        response = session.get(imgurl)
+
+        if response.status_code == 200:
+            image_content = BytesIO(response.content)
+            image = Image.open(image_content)
+            image = image.convert('RGB')
+            image.save(f"{mangaDirec}{mangaName}/{mangaName}-{chapterNumber}/{pageNumber}.jpg")
+            progress_bar.value = (i+1)/len(imgs)
+            labelText.value = f"Saving chapter {chapterNumber}:     {i+1}/{len(imgs)}"
+            labelText.update()
+            progress_bar.update()
+            page.update()
+        else:
+            print(f"Couldn't get page {pageNumber}")
 
 
 # Function that makes pdfs of the manga chapter 
@@ -122,7 +178,7 @@ def pdfize(_dir,name,chapter,page:ft.Page):
         # Loops through all image files and creates a loading bar for it
         for i in range(0,len(image_files)):
             # Defines images path in numerical order
-            image_path =f"{_dir}/{i}.jpg"
+            image_path =f"{_dir}/{i+1}.jpg"
             # Opens the image file to be written in the pdf
             img = Image.open(image_path)
             # Calculate the scaling factor to fit the image within the PDF page
@@ -196,95 +252,6 @@ def mergePDFS(direc,name,page : ft.Page):
     merger.close()
 
 
-
-
-def getAllLinks(link : str) -> None:
-    session = requests.session()
-    text = session.get(link).text
-    parsedData = bs(text,"lxml")
-    chapList = parsedData.find("div",{"class":"panel-story-chapter-list"})
-    chapters = list(chapList.find_all("li",{"class":"a-h"}))
-    chaptersData = {}
-    chapters.reverse()
-    for i in range(len(chapters)):
-        chapLink = chapters[i].find("a").get("href")
-        chapName = chapters[i].find("a").getText()
-        chapNum = chapLink.split("-")[-1]
-        chaptersData.update({chapName:[chapLink,chapNum]})
-        
-    return chaptersData
-
-# Saves the chapter in the designated folder
-def saveManga(link: str,name: str,chapter: int,page:ft.Page):
-    # Starts a new session
-    sesh = requests.session()
-    # Fetches the html data
-    text = sesh.get(link).text
-    # Soups the data so we can look through it
-    text = bs(text,"lxml")
-    # Gets the div where all the images are stored
-    imgDiv = text.find("div",{"class":"container-chapter-reader"})
-    # imgDiv = [div for div in text.find_all("div") if "reader" in str(div.get("class"))][0]
-    # Gets all the image links
-    imgs = [img.get("src") for img in imgDiv.find_all("img") if "page" in str(img.get("title"))]
-    # Headers extracted manually from the website
-    headers = {
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'en-US,en;q=0.7',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Referer': 'https://chapmanganato.com/',
-        'Sec-Ch-Ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Brave";v="114"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Linux"',
-        'Sec-Fetch-Dest': 'image',
-        'Sec-Fetch-Mode': 'no-cors',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Gpc': '1',
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
-    }
-    # Creates a folder for the chapter under the parent manga folder
-    try:
-        os.mkdir(f"{mangaDirec}{name}/{name}-{chapter}")
-    except:
-        print("Directory exists")
-    # Loops through all images and shows progress in the progress bar
-    progress_bar = ft.ProgressBar(
-        width=600,
-        color= generate_hex_color_code()
-    )
-    labelText = ft.Text(f"Saving chapter {chapter}:     0/{len(imgs)}")
-    page.controls.append(labelText)
-    page.controls.append(progress_bar)
-    page.update()
-
-    for i in range(0,len(imgs)):
-        if not os.path.exists(f"{mangaDirec}{name}/{name}-{chapter}/{i}.jpg"):
-            # Requests the files using the session and the extracted headers
-            res = sesh.get(imgs[i],headers=headers)
-
-            # If server response is OK we save the image
-            if res.status_code == 200:
-                # Reads the bytes from the response
-                image_content = BytesIO(res.content)
-                # Opens the bytes as an image
-                image = Image.open(image_content)
-                # Changes mode from P mode to RGB
-                image = image.convert('RGB')
-                # Saves the image in its designated directory
-                image.save(f"{mangaDirec}{name}/{name}-{chapter}/{i}.jpg")
-                progress_bar.value = (i+1)/len(imgs)
-                labelText.value = f"Saving chapter {chapter}:     {i+1}/{len(imgs)}"
-                labelText.update()
-                progress_bar.update()
-                page.update()
-            # If response isnt OK we log an error 
-            else:
-                print(res.status_code)
-        else:
-            print(f"Page {i} of chapter {chapter} exists, skipping...")
-
 resultsPage = ""
 name = ""
 dictChap = {}
@@ -292,12 +259,15 @@ results = []
 optionsRes = []
 startChapterDropdown = ft.Dropdown(
         options = optionsRes,
-        label="Start chapter"
+        label="Start chapter",
+        disabled=True
     )
 endChapterDropdown = ft.Dropdown(
         options = optionsRes,
-        label="End chapter"
+        label="End chapter",
+        disabled=True
     )
+
 newColorCode : str = ""
 randomColorCode : str = ""
 # Function to change domain name
@@ -312,26 +282,73 @@ def search(search : str) -> str | dict:
     # Parses the data
     soupedData = bs(htnlData, "lxml")
     # Gets the search results container
-    container = soupedData.find("ul",{"class": "items"})
-
+    numberOfPages = soupedData.find("ul",{"class":"pagination-list"})
+    if numberOfPages == None : numberOfPages = 1
+    else : numberOfPages = len(numberOfPages.find_all("li"))
     # Creates an empty dicitionary and an index variable
     shows : dict = {}
-    i : int = 0
-    # Loops through all results
-    for show in container.find_all("li"):
-        # Gets image
-        img : str = show.find("img").get("src") 
-        # Gets the p tag containing the name and link
-        paragraph = show.find("p", {"class":"name"})
-        # Gets the a tag within it
-        aTag = paragraph.find("a")
-        # Gets showname and link
-        showName : str = aTag.getText()
-        showLink : str = aTag.get("href")
-        # Updates the dicitionary and increments i
-        shows.update({showName:[showLink,img]})
-        i+=1
+
+    for page in range(1,numberOfPages+1):
+        pagelink = f"{link}&page={page}"
+        htnlData  = session.get(pagelink).text
+        soupedData = bs(htnlData,'lxml')
+        container = soupedData.find("ul",{"class": "items"})
+        i : int = 0
+        # Loops through all results
+        for show in container.find_all("li"):
+            # Gets image
+            img : str = show.find("img").get("src") 
+            # Gets the p tag containing the name and link
+            paragraph = show.find("p", {"class":"name"})
+            # Gets the a tag within it
+            aTag = paragraph.find("a")
+            # Gets showname and link
+            showName : str = aTag.getText()
+            showLink : str = aTag.get("href")
+            # Updates the dicitionary and increments i
+            shows.update({showName:[showLink,img]})
+            i+=1
     return shows        
+
+# Search function
+def searchWithFilter(search : str, filters : dict) -> str | dict:
+    link : str = f"https://{domain}/filter.html?keyword={search.replace(' ','%20')}&"
+    for filterName, value in filters.items():
+        link+= f"{filterName}%5B%5D={value}&"
+    link += 'sort=title_az&'
+    # Creates a new session
+    session : requests.Session = requests.session()
+    # Gets the page's source
+    htnlData = session.get(link).text
+    # Parses the data
+    soupedData = bs(htnlData, "lxml")
+    # Gets the search results container
+    numberOfPages = soupedData.find("ul",{"class":"pagination-list"})
+    if numberOfPages == None : numberOfPages = 1
+    else : numberOfPages = len(numberOfPages.find_all("li"))
+    # Creates an empty dicitionary and an index variable
+    shows : dict = {}
+    for page in range(1,numberOfPages+1):
+        pagelink = f"{link}&page={page}"
+        htnlData  = session.get(pagelink).text
+        soupedData = bs(htnlData,'lxml')
+        container = soupedData.find("ul",{"class": "items"})
+        i : int = 0
+        # Loops through all results
+        for show in container.find_all("li"):
+            # Gets image
+            img : str = show.find("img").get("src") 
+            # Gets the p tag containing the name and link
+            paragraph = show.find("p", {"class":"name"})
+            # Gets the a tag within it
+            aTag = paragraph.find("a")
+            # Gets showname and link
+            showName : str = aTag.getText()
+            showLink : str = aTag.get("href")
+            # Updates the dicitionary and increments i
+            shows.update({showName:[showLink,img]})
+            i+=1
+    return shows 
 
 # Function to format links from homepage
 def formatHomePageLink(link : str) -> str:
@@ -342,7 +359,12 @@ def formatHomePageLink(link : str) -> str:
     # We join the link again
     finalLink = "-".join(linkPart)
     return finalLink
-
+def getAnimeLink(link : str) -> str:
+    session = requests.session()
+    htmldata = session.get(link).text
+    parsedData = bs(htmldata,'lxml')
+    animeinfo = parsedData.find('div',{'class':'anime-info'})
+    return animeinfo.find('a').get('href')
 # Function that fetches homepage
 def getHomePage() -> dict:
     # Link is simply just the domain
@@ -649,14 +671,28 @@ def main(page : ft.Page):
 
     # Function to place results
     def tempSearch(e):
+        options = {}
         # If the search field isn't empty
         if searchField.value:
+
+            if genreDropDown.value != 'None':
+                options.update({"genre":genreDropDown.value.lower().replace(' ','-')})
+            if languageDropDown.value != 'None':
+                options.update({"language":languageDropDown.value.lower().replace(' ','-')})
+            if yearDropdown.value != 'None':
+                options.update({"year":yearDropdown.value.lower().replace(' ','-')})
+            if seasonDropDown.value != 'None':
+                options.update({"season":seasonDropDown.value.lower().replace(' ','-')})
             # Sets the results dict as global
             global results
-            # Fetches the search results
-            results = search(searchField.value)
+            if len(options) != 0:
+                results = searchWithFilter(searchField.value,options)
+            else:    
+                # Fetches the search results
+                results = search(searchField.value)
             # Places all the buttons containing the anime names
             placeResults(results.keys())
+            clear()
     # Search field contains the anime to be searched for
     searchField = ft.TextField(
         label= "Enter anime name",
@@ -672,17 +708,33 @@ def main(page : ft.Page):
             query = searchMangaField.value
             results = searchForManga(searchMangaField.value)
             # Places all the buttons containing the anime names
-            placeMangaResults(sortSearchResults(results))
+            placeMangaResults(results)
+            clear()
     # Search field contains the anime to be searched for
     searchMangaField = ft.TextField(
         label= "Enter manga name",
         on_submit= tempMangaSearch
     )
+    def clear():
+        mangaLangDropdown.options.clear()
+        mangaLangDropdown.options.append(ft.dropdown.Option('None'))
+        startChapterDropdown.options.clear()
+        endChapterDropdown.options.clear()
+        searchMangaField.value = ''
+        searchField.value = ''
+        languageDropDown.value = "None"
+        genreDropDown.value = 'None'
+        yearDropdown.value = 'None'
+        seasonDropDown.value = 'None'
+        epFromField.value = ""
+        epNumField.value = ""
+        quaityDropDown.value = None
     def save(e):
         try:
             os.mkdir(f"{mangaDirec}{name}")
         except:
             print("Directory exists")
+        clear()
         page.clean()
         page.add(
             ft.Container(content=ft.Text(value=f"{name}"),))
@@ -692,26 +744,52 @@ def main(page : ft.Page):
         page.add(ft.ElevatedButton(text="Main menu",on_click=loadMainPage))
         startChapter = startChapterDropdown.value
         endChapter = endChapterDropdown.value
-        startChapterNum = list(dictChap.keys()).index(startChapter)
-        endChapterNum = list(dictChap.keys()).index(endChapter)
-        chaptersList = list(dictChap.keys())
+        startChapterNum = list(results[language].keys()).index(startChapter)
+        endChapterNum = list(results[language].keys()).index(endChapter)
+        chaptersList = list(results[language].keys())
         for i in range(startChapterNum,endChapterNum+1):
-            chapterNumber = dictChap[chaptersList[i]][1]
-            saveManga(dictChap[chaptersList[i]][0],name,chapterNumber,container)
+            chapterNumber = results[language][chaptersList[i]][0]
+            getPages(results[language][chaptersList[i]][1],name,chapterNumber,container)
             pdfize(f"{mangaDirec}{name}/{name}-{chapterNumber}",name,chapterNumber,container)
         mergePDFS(f"{mangaDirec}{name}",name,container)
+
+    def changeValues(e):
+        selectedLanguage = e.control.value
+        if selectedLanguage != "None":
+            global language
+            language = selectedLanguage
+            startChapterDropdown.disabled = False
+            endChapterDropdown.disabled = False
+            startChapterDropdown.options = [ft.dropdown.Option(l) for l in results[selectedLanguage].keys() if l != None]
+            endChapterDropdown.options = [ft.dropdown.Option(l) for l in results[selectedLanguage].keys() if l != None]
+        page.update()
+
+    mangaLangDropdown = ft.Dropdown(
+        label="Language",
+        options= [ft.dropdown.Option('None')],
+        value = "None",
+        on_change=changeValues
+    )
     def selectMangaResult(e : ft.ControlEvent):
         text = e.control.text
         global name
+        global results
         name = text
         print(text, "selected")
-        link = results[text][0]
-        global dictChap
-        dictChap = getAllLinks(link)
+        mangaImg = results[text][1]
+        mangaID = results[text][0]
+        mangaDesc = getAbout(mangaID)
+        results = getChapters(mangaID)
+        for i in results.keys():
+            if i != None:
+                mangaLangDropdown.options.append(ft.dropdown.Option(i))
         global optionsRes
-        optionsRes = [ft.dropdown.Option(i) for i in dictChap.keys()]
-        startChapterDropdown.options = optionsRes
-        endChapterDropdown.options = optionsRes
+
+        descSection = ft.Text(
+            value='',
+        )
+        if mangaDesc != None:
+            descSection.value = mangaDesc
         saveButton = ft.ElevatedButton(
             text = "Save",
             width = 190,
@@ -730,8 +808,20 @@ def main(page : ft.Page):
         thisResultPage = ft.Column(
             controls=[
                 ft.Text(value=text),
-                ft.Container(
-                    height=20
+                ft.Row(
+                    controls = [
+                        ft.Image(
+                            src = mangaImg,
+                            width= 213,
+                            height = 300
+                        ),
+                        ft.Column(
+                            controls = [
+                                ft.Container(content = descSection, width = 310),mangaLangDropdown
+                            ]
+                        )
+
+                    ]
                 ),
                 startChapterDropdown,
                 endChapterDropdown,
@@ -867,6 +957,7 @@ def main(page : ft.Page):
     )
     # Back button function
     def back(e):
+        clear()
         # Removes everything from the page
         page.clean()
         # Adds the result page
@@ -874,6 +965,7 @@ def main(page : ft.Page):
 
     # Function to load the main menu
     def mainMenu(e):
+        clear()
         # Removes everything from the page
         page.clean()
         # Adds the main menu
@@ -998,7 +1090,141 @@ def main(page : ft.Page):
             # Increments name
             name+=1
 
-        
+    genreDropDown = ft.Dropdown(
+        options = [
+            ft.dropdown.Option('None'),
+            ft.dropdown.Option("Action"),
+            ft.dropdown.Option("Adventure"),
+            ft.dropdown.Option("Anthropomorphic"),
+            ft.dropdown.Option("Avant Garde"),
+            ft.dropdown.Option("Cars"),
+            ft.dropdown.Option("CGDCT"),
+            ft.dropdown.Option("Childcare"),
+            ft.dropdown.Option("Comedy"),
+            ft.dropdown.Option("Comic"),
+            ft.dropdown.Option("Crime"),
+            ft.dropdown.Option("Delinquents"),
+            ft.dropdown.Option("Dementia"),
+            ft.dropdown.Option("Demons"),
+            ft.dropdown.Option("Detective"),
+            ft.dropdown.Option("Drama"),
+            ft.dropdown.Option("Dub"),
+            ft.dropdown.Option("Family"),
+            ft.dropdown.Option("Fantasy"),
+            ft.dropdown.Option("Gag Humor"),
+            ft.dropdown.Option("Game"),
+            ft.dropdown.Option("Gourmet"),
+            ft.dropdown.Option("Harem"),
+            ft.dropdown.Option("High Stakes Game"),
+            ft.dropdown.Option("Historical"),
+            ft.dropdown.Option("Horror"),
+            ft.dropdown.Option("Isekai"),
+            ft.dropdown.Option("Iyashikei"),
+            ft.dropdown.Option("Josei"),
+            ft.dropdown.Option("Kids"),
+            ft.dropdown.Option("Magic"),
+            ft.dropdown.Option("Mahou Shoujo"),
+            ft.dropdown.Option("Martial Arts"),
+            ft.dropdown.Option("Mecha"),
+            ft.dropdown.Option("Medical"),
+            ft.dropdown.Option("Military"),
+            ft.dropdown.Option("Music"),
+            ft.dropdown.Option("Mystery"),
+            ft.dropdown.Option("Mythology"),
+            ft.dropdown.Option("Organized Crime"),
+            ft.dropdown.Option("Parody"),
+            ft.dropdown.Option("Performing Arts"),
+            ft.dropdown.Option("Pets"),
+            ft.dropdown.Option("Police"),
+            ft.dropdown.Option("Psychological"),
+            ft.dropdown.Option("Racing"),
+            ft.dropdown.Option("Reincarnation"),
+            ft.dropdown.Option("Romance"),
+            ft.dropdown.Option("Romantic Subtext"),
+            ft.dropdown.Option("Samurai"),
+            ft.dropdown.Option("School"),
+            ft.dropdown.Option("Sci-Fi"),
+            ft.dropdown.Option("Seinen"),
+            ft.dropdown.Option("Shoujo"),
+            ft.dropdown.Option("Shoujo Ai"),
+            ft.dropdown.Option("Shounen"),
+            ft.dropdown.Option("Showbiz"),
+            ft.dropdown.Option("Slice of Life"),
+            ft.dropdown.Option("Space"),
+            ft.dropdown.Option("Sports"),
+            ft.dropdown.Option("Strategy Game"),
+            ft.dropdown.Option("Super Power"),
+            ft.dropdown.Option("Supernatural"),
+            ft.dropdown.Option("Survival"),
+            ft.dropdown.Option("Suspense"),
+            ft.dropdown.Option("Team Sports"),
+            ft.dropdown.Option("Thriller"),
+            ft.dropdown.Option("Time Travel"),
+            ft.dropdown.Option("Vampire"),
+            ft.dropdown.Option("Video Game"),
+            ft.dropdown.Option("Visual Arts"),
+            ft.dropdown.Option("Work Life"),
+            ft.dropdown.Option("Workplace"),
+        ],
+        value = 'None',
+        label = 'Genre',
+        width = 199
+    )
+    yearDropdown = ft.Dropdown(
+        options = [
+            ft.dropdown.Option('None'),
+            ft.dropdown.Option("1999"),
+            ft.dropdown.Option("2000"),
+            ft.dropdown.Option("2001"),
+            ft.dropdown.Option("2002"),
+            ft.dropdown.Option("2003"),
+            ft.dropdown.Option("2004"),
+            ft.dropdown.Option("2005"),
+            ft.dropdown.Option("2006"),
+            ft.dropdown.Option("2007"),
+            ft.dropdown.Option("2008"),
+            ft.dropdown.Option("2009"),
+            ft.dropdown.Option("2010"),
+            ft.dropdown.Option("2011"),
+            ft.dropdown.Option("2012"),
+            ft.dropdown.Option("2013"),
+            ft.dropdown.Option("2014"),
+            ft.dropdown.Option("2015"),
+            ft.dropdown.Option("2016"),
+            ft.dropdown.Option("2017"),
+            ft.dropdown.Option("2018"),
+            ft.dropdown.Option("2019"),
+            ft.dropdown.Option("2020"),
+            ft.dropdown.Option("2021"),
+            ft.dropdown.Option("2022"),
+            ft.dropdown.Option("2023"),
+        ],
+        value = 'None',
+        label = 'Year',
+        width = 130
+    )
+    languageDropDown = ft.Dropdown(
+        options = [
+            ft.dropdown.Option("None"),
+            ft.dropdown.Option("Sub"),
+            ft.dropdown.Option("Dub"),
+        ],
+        value = 'None',
+        label = 'Language',
+        width = 110
+    )
+    seasonDropDown = ft.Dropdown(
+        options = [
+            ft.dropdown.Option("None"),
+            ft.dropdown.Option("Spring"),
+            ft.dropdown.Option("Summer"),
+            ft.dropdown.Option("Fall"),
+            ft.dropdown.Option("Winter"),
+        ],
+        value = 'None',
+        label = 'Season',
+        width = 110
+    )
     # Search page column
     searchPage = ft.Column(
         controls=[
@@ -1007,6 +1233,12 @@ def main(page : ft.Page):
                 value= "Search for anime",
                 weight=ft.FontWeight.BOLD,
                 size = 23
+            ),
+            ft.Row(
+                controls = [
+                    genreDropDown,yearDropdown,languageDropDown,seasonDropDown
+                ],
+                width = 600
             ),
             # Search field that we defined before
             searchField,
@@ -1068,7 +1300,31 @@ def main(page : ft.Page):
             ...
         # Downloads the episodes
         DownloadTheFilesFlet(videosLinks,path,int(epFromField.value),link,quaityDropDown.value,data["Email"],data["Password"])
-    
+    def getData(link: str) -> list:
+        link = f"https://{domain}{link}"
+        session = requests.session()
+        htmlData = session.get(link).text
+        parsedData = bs(htmlData,'lxml')
+        container = parsedData.find('div',{"class":"anime_info_body_bg"})
+        data = []
+        data.append(container.find('img').get("src"))
+        pTags = container.find_all("p",{"class":"type"})
+        showType = pTags[0].find("a").getText()
+        plotSummary = pTags[1].getText()
+        if len(plotSummary) >= 279:
+            plotSummary = plotSummary[:278]
+            plotSummary += "......."
+        genres = pTags[2].find_all("a")
+        genresText = ''.join([genre.getText() for genre in genres])
+        year = pTags[3].getText()
+        status = pTags[4].find("a").getText()
+
+        data.append(showType)
+        data.append(plotSummary)
+        data.append(genresText)
+        data.append(year)
+        data.append(status)
+        return data
     # Function that runs when you select a search result
     def selectResult(e : ft.ControlEvent):
         # Prints the anime name selected
@@ -1076,6 +1332,7 @@ def main(page : ft.Page):
         # Edits the variable episodesNumber as the number of episodes availabe for this anime
         global episodesNumber
         episodesNumber = getNumberOfEpisodes(results[e.control.text][0])
+        animeData = getData(results[e.control.text][0])
         # Edits the linkRaw variable to the link before formatting
         global linkRaw
         linkRaw = results[e.control.text][0]
@@ -1089,8 +1346,27 @@ def main(page : ft.Page):
         controls=[
             # A text containing the anime name
             ft.Text(e.control.text),
+
+            ft.Row(
+                controls = [
+                    ft.Image(
+                        src=animeData[0],
+                        width=213,
+                        height=300,
+                    ),
+                    ft.Column(
+                        controls = [
+                            ft.Container(content = ft.Text(animeData[2]), width = 310),
+                            ft.Text(animeData[1]),
+                            ft.Text(animeData[3]),
+                            ft.Text(animeData[4]),
+                            ft.Text(animeData[5]),
+                            ft.Text(f"{episodesNumber} episodes"),
+                        ]
+                    )
+                ]
+            ),
             # A text containinf the latest episode number
-            ft.Text(f"{episodesNumber} episodes"),
             # A Container acting as a spacer
             ft.Container(
                 height=13
@@ -1158,6 +1434,7 @@ def main(page : ft.Page):
         global episodesNumber
         quaityDropDown.disabled = False
         episodesNumber = getNumeric(results[e.control.text][1])
+        animeData = getData(getAnimeLink(f'{results[e.control.text][0]}-{episodesNumber}'))
         # Edits the linkRaw variable to the link before formatting
         global linkRaw
         linkRaw = formatHomePageLink(results[e.control.text][0])
@@ -1171,8 +1448,26 @@ def main(page : ft.Page):
         controls=[
             # A text containing the anime name
             ft.Text(e.control.text),
+            ft.Row(
+                controls = [
+                    ft.Image(
+                        src=animeData[0],
+                        width=213,
+                        height=300,
+                    ),
+                    ft.Column(
+                        controls = [
+                            ft.Container(content = ft.Text(animeData[2]), width = 310),
+                            ft.Text(animeData[1]),
+                            ft.Text(animeData[3]),
+                            ft.Text(animeData[4]),
+                            ft.Text(animeData[5]),
+                            ft.Text(f"{episodesNumber} episodes"),
+                        ]
+                    )
+                ]
+            ),
             # A text containinf the latest episode number
-            ft.Text(f"{episodesNumber} episodes"),
             # A Container acting as a spacer
             ft.Container(
                 height=13
@@ -1522,12 +1817,18 @@ def main(page : ft.Page):
         page.update()
 
     redSlider = ft.Slider(
+        min=0,max=1,
+        value =1,
         on_change=onSlide
     )
     blueSlider = ft.Slider(
+        min=0,max=1,
+        value =1,
         on_change=onSlide
     )
     greenSlider = ft.Slider(
+        min=0,max=1,
+        value =1,
         on_change=onSlide
     )
     def radioPress(e):
@@ -1619,6 +1920,8 @@ def main(page : ft.Page):
     def loadMenu(e):
         # Cleans the page
         page.clean()
+        global newColorCode
+        newColorCode = data["Color"]
         # Adds the preferences page
         page.add(preferencesPage)
 
@@ -1661,12 +1964,12 @@ def main(page : ft.Page):
             ft.Container(
                 # Text of size 12
                 content = ft.Text(
-                    value="V3.3",
+                    value="V3.5",
                     size = 12
                 ),
                 # Container padding of size 30
                 padding = 30
-            )
+            ),
         ],
         # Main page horizontal alignment is centre
         horizontal_alignment= ft.CrossAxisAlignment.CENTER

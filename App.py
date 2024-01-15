@@ -10,6 +10,7 @@ from io import BytesIO
 from bs4 import BeautifulSoup as bs, Tag
 import os
 import flet as ft
+import subprocess
 from tqdm import tqdm
 import json 
 
@@ -1409,14 +1410,18 @@ def main(page : ft.Page):
                 stop(e,path)
             os.system(f'cvlc {videosLinks[0]} & echo $! -> {path}vlc.pid')
         elif os.name == 'nt':
-            os.system(f'"{cvlcPath}" {videosLinks[0]}')
+            try: stop(e,path)
+            except : pass
+            playerPath = os.path.normpath(f'{cvlcPath}vlc.exe')
+            command = [playerPath,videosLinks[0]]
+            subprocess.Popen(command,shell=True)
     def stop(e,path):
         if os.name == 'posix':
             if os.path.exists(f'{path}vlc.pid'):
                 os.system(f'kill -9 $(cat {path}vlc.pid)')
                 os.remove(f'{path}vlc.pid')
         elif os.name == 'nt':
-            os.system(f'taskkill /im cvlc.exe /f')
+            os.system(f'taskkill /im vlc.exe /f')
 
     # Function that runs when you select a search result
     def selectResult(e : ft.ControlEvent):

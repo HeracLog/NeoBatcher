@@ -10,7 +10,9 @@ from io import BytesIO
 from bs4 import BeautifulSoup as bs, Tag
 import os
 import flet as ft
+from tqdm import tqdm
 import json 
+
 
 # Function that loads the data from the preferences file
 def loadData() -> dict:
@@ -35,6 +37,7 @@ resultsPage = ft.Column(
 data = loadData()
 direc = data["Directory"]
 mangaDirec = data["Manga_Directory"]
+cvlcPath = data['Player']
 try:
     os.mkdir(direc)
 except: pass
@@ -46,7 +49,7 @@ defaultMode = data["Mode"]
 # Loads the domain from the file
 domain : str = data["Domain"]
 
-
+selectedEpisode = ''
 query = ""
 language = ""
 # Function that searches for managa
@@ -267,7 +270,9 @@ endChapterDropdown = ft.Dropdown(
         label="End chapter",
         disabled=True
     )
+downloadPage = ft.Column(
 
+)
 newColorCode : str = ""
 randomColorCode : str = ""
 # Function to change domain name
@@ -368,7 +373,7 @@ def getAnimeLink(link : str) -> str:
 # Function that fetches homepage
 def getHomePage() -> dict:
     # Link is simply just the domain
-    link : str = f"https://{domain}/home.html"
+    link : str = f"https://{domain}/"
     # Creates a new session
     session : requests.Session = requests.session()
     # Gets the html data
@@ -972,13 +977,14 @@ def main(page : ft.Page):
         page.add(mainPage)
 
     # Actual function to download the videos
-    def DownloadTheFilesFlet(Links,path,startEp,mainLink,quality,email,password):
+    def DownloadTheFilesFlet(Links,path,startEp,mainLink,quality,email,password,name):
         # Creates a new column for the download page
         pageColumn = ft.Column(
-            controls = []
+            controls = [ft.Text(value = name, weight=ft.FontWeight.BOLD)]
         )
+        downloadPage.controls.append(pageColumn)
         # Adds the page column
-        page.add(pageColumn)
+        page.add(downloadPage)
         # Adds the main buttons to the page
         page.add(
             ft.Row(
@@ -1035,7 +1041,7 @@ def main(page : ft.Page):
                         totalBytes = 0
                         speed = 0
                         # Loops through response as it write it in chunks
-                        for data in response.iter_content(block_size):
+                        for data in tqdm(response.iter_content(block_size), desc = f'EP{name}'):
                             totalGotten += len(data)
                             # Updates progress bar
                             progress_bar.value = totalGotten/total_size_in_bytes
@@ -1288,9 +1294,7 @@ def main(page : ft.Page):
         # Cleans the page 
         page.clean()
         # Adds a bold text with the anime name
-        page.add(
-            ft.Text(value = name, weight=ft.FontWeight.BOLD)
-        )
+        
         # Defines path of the anime directory, the name will be derived from the link
         path = f"{data['Directory']}{linkRaw.split('/')[-1]}"
         try:
@@ -1299,7 +1303,7 @@ def main(page : ft.Page):
         except:
             ...
         # Downloads the episodes
-        DownloadTheFilesFlet(videosLinks,path,int(epFromField.value),link,quaityDropDown.value,data["Email"],data["Password"])
+        DownloadTheFilesFlet(videosLinks,path,int(epFromField.value),link,quaityDropDown.value,data["Email"],data["Password"],name)
     def getData(link: str) -> list:
         link = f"https://{domain}{link}"
         session = requests.session()
@@ -1325,10 +1329,102 @@ def main(page : ft.Page):
         data.append(year)
         data.append(status)
         return data
+    def changeValue(e, episode):
+        global selectedEpisode
+        selectedEpisode = episode
+    def loadPlayPage(e):
+        episodesNumber = getNumberOfEpisodes(results[e.control.tooltip][0])
+        animeData = getData(results[e.control.tooltip][0])
+        eps = list(range(1,int(episodesNumber)+1))
+        episodeDropDown = ft.Dropdown(
+            label='Episodes',
+            on_change= lambda e: changeValue(e,episodeDropDown.value),width=200,
+
+        )
+        for ep in eps:
+            episodeDropDown.options.append(
+                ft.dropdown.Option(f'{ep}')
+            )
+        playButton = ft.ElevatedButton(text='Play', on_click=lambda e:play(e,int(selectedEpisode),data['Directory']))
+        playPage = ft.Column(
+        controls=[
+            # A text containing the anime name
+            ft.Text(e.control.text),
+
+            ft.Row(
+                controls = [
+                    ft.Image(
+                        src=animeData[0],
+                        width=213,
+                        height=300,
+                    ),
+                    ft.Column(
+                        controls = [
+                            ft.Container(content = ft.Text(animeData[2]), width = 310),
+                            ft.Text(animeData[1]),
+                            ft.Text(animeData[3]),
+                            ft.Text(animeData[4]),
+                            ft.Text(animeData[5]),
+                            ft.Text(f"{episodesNumber} episodes"),
+                        ]
+                    )
+                ]
+            ),
+            # A text containinf the latest episode number
+            # A Container acting as a spacer
+            ft.Container(
+                height=13
+            ),
+            # A row with the control fields      data["Password"] = passwordPField.value
+   
+            ft.Row(
+                controls=[
+                    # The control fields we defined earlier
+                    episodeDropDown,quaityDropDown,
+                    ft.Column( controls = [playButton,ft.ElevatedButton(text='Stop', on_click=lambda e:stop(e,data['Directory']))])
+                ],
+                # The row is restricted to width 400
+                width = 600
+            ),
+            # Another row containg other controls
+            ft.Row(
+                controls=[
+                    # Back button and main menu button with functions "back" and "mainMenu" respectively
+                    ft.ElevatedButton(text = "Back",tooltip=name,on_click=selectResult,width=187),
+                    ft.ElevatedButton(text = "Main menu",on_click=mainMenu,width=187),
+                ]
+            )
+        ]
+        )
+        page.clean()
+        page.add(playPage)
+        page.update()
+    def play(e,num :int, path ):
+        eps = list(range(num,num+1))
+        videosLinks = LoginAndGoToLink(eps,link,quaityDropDown.value,data["Email"],data["Password"])
+        print('Got video link')
+        if os.name == 'posix':
+            print('Playing')
+            if os.path.exists(f'{path}vlc.pid'):
+                stop(e,path)
+            os.system(f'cvlc {videosLinks[0]} & echo $! -> {path}vlc.pid')
+        elif os.name == 'nt':
+            os.system(f'"{cvlcPath}" {videosLinks[0]}')
+    def stop(e,path):
+        if os.name == 'posix':
+            if os.path.exists(f'{path}vlc.pid'):
+                os.system(f'kill -9 $(cat {path}vlc.pid)')
+                os.remove(f'{path}vlc.pid')
+        elif os.name == 'nt':
+            os.system(f'taskkill /im cvlc.exe /f')
+
     # Function that runs when you select a search result
     def selectResult(e : ft.ControlEvent):
         # Prints the anime name selected
+        if e.control.text == 'Back':
+            e.control.text = e.control.tooltip
         print(e.control.text, "selected")
+
         # Edits the variable episodesNumber as the number of episodes availabe for this anime
         global episodesNumber
         episodesNumber = getNumberOfEpisodes(results[e.control.text][0])
@@ -1361,7 +1457,8 @@ def main(page : ft.Page):
                             ft.Text(animeData[3]),
                             ft.Text(animeData[4]),
                             ft.Text(animeData[5]),
-                            ft.Text(f"{episodesNumber} episodes"),
+                            ft.Text(f"{episodesNumber} episodes")
+                            ,ft.ElevatedButton(text='Play',tooltip=name,on_click=loadPlayPage)
                         ]
                     )
                 ]
@@ -1738,7 +1835,11 @@ def main(page : ft.Page):
     defaultDirectory = ft.TextField(
         label="Download Directory",
         value=data["Directory"]
-    )    
+    )   
+    cvlcPathFeild = ft.TextField(
+        label="CVLC path, Windows only",
+        value=data["Player"]
+    )  
     defaultMangaDirectory = ft.TextField(
         label="Manga Directory",
         value=data["Manga_Directory"]
@@ -1755,6 +1856,7 @@ def main(page : ft.Page):
             # Sets the data from the email field value
             data["Email"] = emailPField.value
             # Sets the data from the password field value
+
             data["Password"] = passwordPField.value
             # Sets the data from the direcotiry field value
             data["Directory"] = defaultDirectory.value
@@ -1765,6 +1867,7 @@ def main(page : ft.Page):
             try:
                 os.mkdir(defaultMangaDirectory.value)
             except: pass
+            data["Player"] = cvlcPathFeild.value
             # Sets the data from the mode dropdown value
             data["Mode"] = modeDropDown.value
             # Sets the data from the color theme value
@@ -1778,6 +1881,7 @@ def main(page : ft.Page):
             # Sets the page theme to the mode from the dropdown menu
             page.theme_mode = modeDropDown.value
             colorCode = ""
+            cvlcPath = cvlcPathFeild.value
             # If the color theme prefernces is random
             if radioGP.value == "Random":
                 randomColorCode = generate_hex_color_code()
@@ -1885,7 +1989,7 @@ def main(page : ft.Page):
             # Email and password fields we created earlier
             emailPField,passwordPField,
             # Text acting as a tool tip and the default directory field we created earlier
-            ft.Text("Directory name must end with a slash /"),defaultDirectory,defaultMangaDirectory,
+            ft.Text("Directory name must end with a slash /"),defaultDirectory,defaultMangaDirectory,cvlcPathFeild,
             ft.Text("Color theme: "),radioGP,ft.Text("Red: "),redSlider,ft.Text("Green: "),greenSlider,ft.Text("Blue: "),blueSlider,
             # Container with the save button
             ft.Container(
@@ -1980,10 +2084,11 @@ def main(page : ft.Page):
         # Adds the login page
         page.add(loginScreen)
     else:
-        # Otherwise we add the main page
         page.add(mainPage)
+
 
 # If the app is ran as a file not as a library
 if __name__ == "__main__":
     # We run the flet app with the target as the main function
     ft.app(target=main)
+    

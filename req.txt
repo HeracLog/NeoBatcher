@@ -1,8 +1,7 @@
-requests
-lxml
-bs4
 flet
+requests
+bs4
+lxml
 reportlab
 pillow
-ngram
 pypdf

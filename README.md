@@ -45,3 +45,18 @@ All configurations can be made from the settings tab in the app, you can :
 
 ## Get in Touch
 Have questions, suggestions, or just want to chat? Reach out to me on discord @bruh_meowment.
+
+## Images
+![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/c32fd3e9-d365-487e-8f1e-2119d85b0641)<br>
+![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/f6ff4e48-87ee-4b29-8e9d-b6d6b41677e8)<br>
+![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/ad43263b-1042-494e-9937-542b9bc58d5e)<br>
+![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/406f98c1-71c0-400f-b602-598b37c4c072)<br>
+![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/61fb1f74-fb0b-4c96-928d-d676fd549f47)<br>
+![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/f1b2853e-5b0a-4d54-a8e5-a831e0cf3893)<br>
+![Uploading image.png…]()<br>
+
+
+
+
+
+

@@ -1,5 +1,5 @@
 
-# AwesomeApp
+# Neobatcher
 ## Introduction
 Welcome to Neobatcher – the next place for all your anime and manga needs! 🌟
 

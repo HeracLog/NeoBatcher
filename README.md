@@ -20,10 +20,10 @@ Follow these simple steps to get started with NeoBatcher:
 
 # Installation:
 
-Clone the repository: git clone https://github.com/TortoiseShell04/NeoBatcher<br>
-Navigate to the project directory: cd NeoBatcher<br>
-Install dependencies: pip install -r req.txt<br>
-Run using python App.py<br>
+Clone the repository: `git clone https://github.com/TortoiseShell04/NeoBatcher`<br>
+Navigate to the project directory: `cd NeoBatcher`<br>
+Install dependencies: `pip install -r req.txt`<br>
+Run using `python App.py`<br>
 
 ## Sidenotes
 You need VLC media player to watch anime.

@@ -53,8 +53,6 @@ Have questions, suggestions, or just want to chat? Reach out to me on discord @b
 ![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/406f98c1-71c0-400f-b602-598b37c4c072)<br>
 ![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/61fb1f74-fb0b-4c96-928d-d676fd549f47)<br>
 ![image](https://github.com/TortoiseShell04/NeoBatcher/assets/118297920/f1b2853e-5b0a-4d54-a8e5-a831e0cf3893)<br>
-![Uploading image.png…]()<br>
-
 
 
 

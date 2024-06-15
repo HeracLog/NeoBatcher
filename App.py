@@ -6,19 +6,19 @@ import json
 import subprocess
 from assets.utils.gogo import GogoanimeBatcher
 from assets.utils.manga import MangaDex
+from assets.utils.prefUtil import PrefUtil
+from assets.utils.recentUtil import RecentsManager
 from assets.ui.ResultWindow import ResultWindow
 from assets.ui.Dropdowns import Dropdowns
 from assets.ui.Toolbar import ToolBar
 from assets.ui.MangaPage import MangaPage 
 
-# Function that loads the data from the preferences file
-def loadData() -> dict:
-    # Opens the data file
-    jsonData = open("./preferences.json","r")
-    # Parses the data from json to dict
-    dataDict = json.load(jsonData)
-    # Returns the dict
-    return dataDict
+# Loads preferences file and fixes any errors
+util = PrefUtil()
+recentManager = RecentsManager()
+recentManager.checkForEntires()
+recentData = recentManager.loadFile()
+data = util.loadFile()
 # Global variables that will be used throughout the execution process
 link : str= ""
 linkRaw : str= ""
@@ -32,9 +32,8 @@ toolbar = ToolBar()
 # Results page intialization 
 resultsPage = ft.Column(
 )
+recentResPage = None
 drop = Dropdowns()
-# Loads the data
-data = loadData()
 direc = data["Directory"]
 mangaDirec = data["Manga_Directory"]
 cvlcPath = data['Player']
@@ -241,10 +240,15 @@ def main(page : ft.Page):
     def loadSearchPage(e):
         global currentPage
         # Removes everything from the page
-        page.remove(currentPage)
+        if currentPage:
+                page.remove(currentPage)
         # Adds the search page
         page.add(searchPage)
         currentPage = searchPage
+        global results
+        results = recentManager.data['Anime']
+        results = recentManager.revDict(results)
+        placeResults(list(results.keys()),'a',True)
 
     # Function to place results
     def tempSearch(e):
@@ -372,7 +376,8 @@ def main(page : ft.Page):
             ]
         )
         global currentPage
-        page.remove(currentPage)
+        if currentPage:            
+                page.remove(currentPage)
         page.add(thisResultPage)
         currentPage = thisResultPage
     def onprev(e):
@@ -424,7 +429,8 @@ def main(page : ft.Page):
                 )
             )
         currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            page.remove(currentPage)
         page.add(mangaPages[0])
         currentPage = mangaPages[0]
         page.update()
@@ -439,8 +445,9 @@ def main(page : ft.Page):
         except:
             print("Directory exists")
         clear()
-        currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            currentPage.controls.remove(ring)
+            page.remove(currentPage)
         page.add(downloadPage)
         currentPage = downloadPage
         downloadPage.controls.append(
@@ -484,6 +491,8 @@ def main(page : ft.Page):
         page.update()
         nameM = text
         print(text, "selected")
+        recentManager.addManga({text:results[text]})
+        recentManager.save()
         mangaImg = results[text][1]
         mangaID = results[text][0]
         mangaDesc = mangadex.getAbout(mangaID)
@@ -537,8 +546,9 @@ def main(page : ft.Page):
                 )
             ]
         )
-        currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            currentPage.controls.remove(ring)
+            page.remove(currentPage)
         page.add(thisResultPage)
         currentPage = thisResultPage
 
@@ -576,7 +586,8 @@ def main(page : ft.Page):
         clear()
         global currentPage
         # Removes everything from the page
-        page.remove(currentPage)
+        if currentPage:        
+            page.remove(currentPage)
         # Adds the result page
         page.add(resultsPage)
         currentPage = resultsPage
@@ -748,8 +759,9 @@ def main(page : ft.Page):
         # Fetches the links using the "LoginAndGoToLink" function
         videosLinks = gogobatcher.getDownloadLinks(eps,link,quaityDropDown.value)
         # Cleans the page 
-        currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            currentPage.controls.remove(ring)
+            page.remove(currentPage)
         # Adds a bold text with the anime name
         
         # Defines path of the anime directory, the name will be derived from the link
@@ -818,7 +830,7 @@ def main(page : ft.Page):
                 controls=[
                     # The control fields we defined earlier
                     episodeDropDown,quaityDropDown,
-                    ft.Column( controls = [playButton,ft.ElevatedButton(text='Stop', on_click=lambda e:stop(e,data['Directory']))])
+                    ft.Column( controls = [playButton])
                 ],
                 # The row is restricted to width 400
                 alignment= ft.MainAxisAlignment.CENTER
@@ -833,8 +845,9 @@ def main(page : ft.Page):
             )
         ]
         )
-        currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            currentPage.controls.remove(ring)
+            page.remove(currentPage)
         page.add(playPage)
         currentPage = playPage
         page.update()
@@ -846,7 +859,7 @@ def main(page : ft.Page):
             print('Playing')
             if os.path.exists(f'{path}vlc.pid'):
                 stop(e,path)
-            os.system(f'cvlc {videosLinks[0]} & echo $! -> {path}vlc.pid')
+            os.system(f'vlc {videosLinks[0]} & echo $! -> {path}vlc.pid')
         elif os.name == 'nt':
             try: stop(e,path)
             except : pass
@@ -874,6 +887,8 @@ def main(page : ft.Page):
         animeData = gogobatcher.getAnimeData(results[e.control.tooltip][0])
         # Edits the linkRaw variable to the link before formatting
         global linkRaw
+        recentManager.addAnime({e.control.tooltip:results[e.control.tooltip]})
+        recentManager.save()
         linkRaw = results[e.control.tooltip][0]
         # Edits the name variable to the anime name
         global name
@@ -934,8 +949,9 @@ def main(page : ft.Page):
         ]
         )
         # Cleans the page
-        currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            currentPage.controls.remove(ring)
+            page.remove(currentPage)
         # Disables the download button
         downloadButton.disabled = True
         # Adds the result page above
@@ -988,6 +1004,8 @@ def main(page : ft.Page):
         # Edits the name variable to the anime name
         global name
         name = e.control.tooltip
+        recentManager.addHome({name:results[name]})
+        recentManager.save()
         # Creates a download button with the click event as the "download" function 
         downloadButton = ft.ElevatedButton(text = "Download",on_click=download,width=187)
         # Creates a result page for the selected anime
@@ -1043,8 +1061,9 @@ def main(page : ft.Page):
         ]
         )
         # Cleans the page
-        currentPage.controls.remove(ring)
-        page.remove(currentPage)
+        if currentPage:        
+            currentPage.controls.remove(ring)
+            page.remove(currentPage)
         # Adds the result page above
         page.add(resultPage)
         currentPage = resultPage
@@ -1056,7 +1075,7 @@ def main(page : ft.Page):
         page.update()
 
     # Function to places the results
-    def placeResults(resultKeys,t):
+    def placeResults(resultKeys,t, recent = False):
             if t == 'm':
                 searchquery = searchMangaField.value
                 searchquery = searchquery.capitalize()
@@ -1071,8 +1090,10 @@ def main(page : ft.Page):
                 imgI = 1
             else:
                 func = selectHomePageResult
-                text = 'NeoBatcher \t\t\t\t\t\t\t V3.8' 
+                text = 'NeoBatcher \t\t\t\t\t\t\t V3.9' 
                 imgI = 2
+            if recent:
+                text = f"Recents :"
             # Sets variables as global
             global resultsPage
 
@@ -1114,15 +1135,25 @@ def main(page : ft.Page):
                                 )
                             )
                             i+=1
+                    if len(r.controls) < itemCount: r.alignment = ft.MainAxisAlignment.SPACE_EVENLY
                     resultsPage.controls.append(r)
             global currentPage
-            if currentPage:
+            global recentResPage
+            if not recent:
                 # Cleans the page
-                currentPage.controls.remove(ring)
-                page.remove(currentPage)
+
                 # Adds the results page
-            page.add(resultsPage)
-            currentPage = resultsPage
+                if currentPage:
+                    currentPage.controls.remove(ring)
+                    page.remove(currentPage)
+                currentPage = resultsPage
+                page.add(resultsPage)
+            else:
+                if recentResPage in currentPage.controls:
+                    currentPage.controls.remove(recentResPage)
+                recentResPage = resultsPage
+                currentPage.controls.append(resultsPage)
+                page.update()
 
         
     # Text field for the new domain
@@ -1222,7 +1253,8 @@ def main(page : ft.Page):
             mangadex.path = defaultMangaDirectory.value
             # Cleans the page
             global currentPage
-            page.remove(currentPage)
+            if currentPage:            
+                page.remove(currentPage)
             # Sets the page theme to the mode from the dropdown menu
             page.theme_mode = modeDropDown.value
             colorCode = ""
@@ -1247,6 +1279,10 @@ def main(page : ft.Page):
             # Adds the main page
             page.add(mainPage)
             currentPage = mainPage
+            global results
+            results = recentManager.data['Home']
+            results = recentManager.revDict(results)
+            placeResults(results.keys(),'h',True)
     
     def onSlide(e):
         redHex = hex(int(redSlider.value*255)).replace('0x','')
@@ -1363,7 +1399,8 @@ def main(page : ft.Page):
     def loadMenu(e):
         # Cleans the page
         global currentPage
-        page.remove(currentPage)
+        if currentPage:        
+            page.remove(currentPage)
         global newColorCode
         newColorCode = data["Color"]
         # Adds the preferences page
@@ -1371,12 +1408,16 @@ def main(page : ft.Page):
         currentPage = preferencesPage
 
     # Button to load settings page
-    settingsButton = ft.ElevatedButton(text="Settings", on_click=loadMenu)
     def loadManga(e):
         global currentPage
-        page.remove(currentPage)
+        if currentPage:        
+            page.remove(currentPage)
         page.add(mangaSearchPage)
         currentPage = mangaSearchPage
+        global results
+        results = recentManager.data['Manga']
+        results = recentManager.revDict(results)
+        placeResults(list(results.keys()),'m',True)
     # Main page column
     mainPage = ft.Column(
         controls= [
@@ -1404,7 +1445,7 @@ def main(page : ft.Page):
             ft.Container(
                 # Text of size 12
                 content = ft.Text(
-                    value="V3.8",
+                    value="V3.9",
                     size = 12
                 ),
                 # Container padding of size 30
@@ -1418,16 +1459,22 @@ def main(page : ft.Page):
         global currentPage
         i = e.control.selected_index
         if i == 0:
-            page.remove(currentPage)
+            if currentPage:            
+                page.remove(currentPage)
             page.add(downloadPage)
             currentPage = downloadPage
             page.update()
         if i == 1: 
             loadManga(e)
         if i == 2:
-            page.remove(currentPage)
+            if currentPage:            
+                page.remove(currentPage)
             page.add(mainPage)
             currentPage = mainPage
+            global results
+            results = recentManager.data['Home']
+            results = recentManager.revDict(results)
+            placeResults(results.keys(),'h',True)
         if i == 3: 
             loadSearchPage(e)
         if i == 4:
@@ -1436,7 +1483,6 @@ def main(page : ft.Page):
     # If the email or password aren't useable 
     if len(data["Email"]) < 1 or len(data["Password"]) < 1:
         # Adds the login page
-        page.add(toolbar.toolbar)
         page.add(loginScreen)
         currentPage = loginScreen
     else:

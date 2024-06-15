@@ -2,6 +2,6 @@ flet
 requests
 bs4
 lxml
-reportlab
+fpdf
 pillow
 pypdf

@@ -184,11 +184,10 @@ class GogoanimeBatcher:
         epStart = episodeRanges.find("li").find("a").get("ep_start")
         epEnd = episodeRanges.find("li").find("a").get("ep_end")
         # Creates a link for getting the episode data
-        epLink = f"https://ajax.gogo-load.com/ajax/load-list-episode?ep_start={epStart}&ep_end={epEnd}&id={movieID}&default_ep=0&alias={link.split('/')[-1]}"
+        epLink = f"https://ajax.gogocdn.net/ajax/load-list-episode?ep_start={epStart}&ep_end={epEnd}&id={movieID}&default_ep=0&alias={link.split('/')[-1]}"
 
         # Gets the episode page
         epData = session.get(epLink).text
-
         # Parses the episode page
         link = bs(epData,"lxml").find("a").get("href")
         # Formats the link
@@ -264,8 +263,9 @@ class GogoanimeBatcher:
         data = []
         data.append(container.find('img').get("src"))
         pTags = container.find_all("p",{"class":"type"})
+        desct = container.find("div",{"class":"description"})
         showType = pTags[0].find("a").getText()
-        plotSummary = pTags[1].getText()
+        plotSummary = desct.getText()
         if len(plotSummary) >= 279:
             plotSummary = plotSummary[:278]
             plotSummary += "......."

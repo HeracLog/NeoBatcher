@@ -4,11 +4,10 @@ import requests
 import json
 from PIL import Image
 from pypdf import PdfMerger
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from io import BytesIO
 import os
 import flet as ft
+import fpdf
 
 class MangaDex:
     def __init__(self,path:str) -> None:
@@ -17,7 +16,7 @@ class MangaDex:
 
     # Function that searches for managa
     def searchForManga(self,query : str) -> dict:
-        link = f'https://api.mangadex.org/manga?title={query}&limit=25&contentRating[]=safe&includes[]=cover_art&order[relevance]=desc'
+        link = f'https://api.mangadex.org/manga?title={query}&limit=25&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&includes[]=cover_art&order[relevance]=desc'
         data = self.session.get(link).content.decode("utf-8")
         data = json.loads(data)
         # parsedData = bs(data,'lxml')
@@ -38,8 +37,11 @@ class MangaDex:
         data = self.session.get(link).content.decode('utf-8')
         data = json.loads(data)
         attributes = data['data']['attributes']
-        description = attributes['description']
-        return description['en']
+        try:
+            description = attributes['description']
+            return description['en']
+        except:
+            return "This manga has no description"
     
     def getChapters(self,managaID : str) -> dict:
         startAmmount = 200
@@ -135,7 +137,7 @@ class MangaDex:
             image_files = [f for f in os.listdir(_dir) if f.endswith('.jpg') or f.endswith('.jpeg') or f.endswith('.png')]
 
             # Creates a pdf canvas of letter size and name of the manga and its chapter
-            pdf = canvas.Canvas(f'{_dir}/{name}-{chapter}.pdf', pagesize=letter)
+            merger = PdfMerger()
             progress_bar = ft.ProgressBar(
                 width=600,
                 color= self.generate_hex_color_code()
@@ -147,34 +149,27 @@ class MangaDex:
 
             # Loops through all image files and creates a loading bar for it
             for i in range(0,len(image_files)):
-                # Defines images path in numerical order
-                image_path =f"{_dir}/{i+1}.jpg"
-                # Opens the image file to be written in the pdf
+                image_path = f"{_dir}/{i+1}.jpg"
                 img = Image.open(image_path)
-                # Calculate the scaling factor to fit the image within the PDF page
-                # img.size is a tuple of (width,height)
                 width, height = img.size
-                # Gets the max size of the page
-                max_width, max_height = letter
-                # Scaling factor is the max dim / img dim,
-                # We select the smallest so the other dimension gets displayed properly
-                scaling_factor = min(max_width/width, max_height/height)
 
-                # Scale the image size
-                new_width = int(width * scaling_factor)
-                new_height = int(height * scaling_factor)
+                pdf = fpdf.FPDF(format=(width, height))
+                pdf.add_page()
+                pdf.image(image_path, 0, 0, width, height)
 
-                # Draw the image on the PDF canvas
-                pdf.drawImage(image_path, 0, 0, width=new_width, height=new_height, preserveAspectRatio=True)
+                pdf.output(f"{_dir}/temp_{i}.pdf", "F")
+                merger.append(f"{_dir}/temp_{i}.pdf")
+
+                os.remove(f"{_dir}/temp_{i}.pdf")
+
                 progress_bar.value = (i+1)/len(image_files)
                 labelText.value = f"Pdfizing chapter {chapter}:     {i+1}/{len(image_files)}"
                 page.update()
                 # Check if its the last page
                 # If its not we create a new page
-                if i < len(image_files) - 1:
-                    pdf.showPage()
-            # Saves the pdf file
-            pdf.save()
+            merger.write(f'{_dir}/{name}-{chapter}.pdf')
+            merger.close()
+
             # Alerts the pdf is done
             print(f"Done pdfizing chapter {chapter}")
 
